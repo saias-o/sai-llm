@@ -1,0 +1,23 @@
+cmake_minimum_required(VERSION 3.20)
+project(SaiLlmAdvisor LANGUAGES CXX)
+
+if(WIN32)
+    enable_language(RC)
+    add_executable(SAI-LLM WIN32 main_windows.cpp hardware_windows.cpp advisor.cpp app.rc)
+    target_include_directories(SAI-LLM PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
+    target_compile_definitions(SAI-LLM PRIVATE UNICODE _UNICODE NOMINMAX WIN32_LEAN_AND_MEAN
+        WINVER=0x0A00 _WIN32_WINNT=0x0A00)
+    target_link_libraries(SAI-LLM PRIVATE d2d1 dwrite dwmapi dxgi dxguid gdi32 user32 advapi32)
+    if(MINGW)
+        target_link_options(SAI-LLM PRIVATE -municode -static)
+    elseif(MSVC)
+        target_compile_options(SAI-LLM PRIVATE "$<$<COMPILE_LANGUAGE:CXX>:/utf-8>")
+        set_property(TARGET SAI-LLM PROPERTY MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+    endif()
+else()
+    add_executable(SAI-LLM main_console.cpp hardware_unix.cpp advisor.cpp)
+    target_link_libraries(SAI-LLM PRIVATE ${CMAKE_DL_LIBS})
+endif()
+
+target_compile_features(SAI-LLM PRIVATE cxx_std_20)
+set_target_properties(SAI-LLM PROPERTIES CXX_EXTENSIONS OFF)
