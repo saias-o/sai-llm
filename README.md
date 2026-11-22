@@ -6,6 +6,8 @@ Local PC LLM agents for real work. SAI-LLM includes four model profiles and a na
 
 The advisor reads your CPU, installed RAM, GPU and VRAM. It recommends the most capable profile your hardware is expected to run and an everyday profile with a target of 20 generated tokens per second on a short prompt. If no profile is expected to reach that target, it recommends `sai-flash`. These estimates use hardware rules and require no model downloads or benchmarks.
 
+On Windows, open **Hermes Setup** in the advisor for an installation walkthrough and a copyable Hermes configuration for all four SAI profiles.
+
 Build with CMake 3.20 or newer and a C++20 compiler. On Windows, with Visual Studio and its C++ desktop workload installed, run the following from the repository root in PowerShell.
 
 ```powershell
@@ -21,6 +23,16 @@ cmake -S SAI-LLM -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build
 ./build/SAI-LLM
 ```
+
+## Chat
+
+Open **Chat** after starting the corresponding SAI server. Choose a model and a reasoning setting. Each request includes the previous turns in that conversation. Conversations are saved under `%LOCALAPPDATA%\SAI-LLM\Conversations`.
+
+- **Attachments** accepts PDFs with every model. The app extracts text locally and uses Windows OCR on scanned pages. Scanned pages require a Windows OCR language. PDFs are limited to 32 MB per file.
+- **Images** accept PNG and JPEG files up to 5 MB on `sai-max`. The shipped `sai-flash`, `sai-smart` and `sai-big` configurations accept text and PDF attachments. Earlier images appear as filename references when a conversation switches to one of these profiles.
+- **Options** has separate **Memory** and **System Prompt** tabs. Saved settings apply to the next message in every conversation on this PC and are stored in `%LOCALAPPDATA%\SAI-LLM\settings.json`.
+
+The Windows CMake build fetches a pinned PDFium runtime and copies `pdfium.dll` next to the executable. Keep those files together for PDF extraction. An offline build can use `-DSAI_PDFIUM_DIR=<extracted directory>`. [PDFium downloads](https://github.com/bblanchon/pdfium-binaries/releases/tag/chromium%2F8165)
 
 ## Model profiles
 
@@ -68,3 +80,5 @@ In Hermes, configure a custom OpenAI-compatible provider with the corresponding 
 ## License
 
 The project is distributed under [GPL-3.0](LICENSE). The chat templates adapt the original Thinking Machines Lab template and are distributed under the [Apache 2.0 license](templates/LICENSE-APACHE). [Upstream Inkling 2 Mini chat template](https://huggingface.co/thinkingmachines/Inkling-2-Mini/blob/b85c3cfa615fc413cc9af3379f491b963f3b586a/chat_template.jinja)
+
+The bundled [PicoJSON header](SAI-LLM/third_party/picojson.h) is distributed under its BSD 2-Clause license.

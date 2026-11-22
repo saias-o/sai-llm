@@ -1,9 +1,12 @@
 #include "advisor.hpp"
+#include "chat_windows.hpp"
+#include "hermes_guide.hpp"
 
 #include <windows.h>
 #include <d2d1.h>
 #include <dwrite.h>
 #include <dwmapi.h>
+#include <shellapi.h>
 #include <wrl/client.h>
 
 #include <algorithm>
@@ -19,23 +22,36 @@ using Microsoft::WRL::ComPtr;
 constexpr auto window_class = L"SaiLlmModelAdvisor";
 constexpr UINT scan_complete = WM_APP + 1;
 constexpr int rescan_button = 100;
-constexpr float margin = 36;
-constexpr float header_height = 78;
-constexpr float card_top = 184;
-constexpr float card_height = 224;
-constexpr float hardware_top = 469;
-constexpr float processor_height = 73;
-constexpr float gpu_height = 54;
+constexpr int setup_button = 101;
+constexpr int back_button = 102;
+constexpr int next_button = 103;
+constexpr int copy_button = 104;
+constexpr int docs_button = 105;
+constexpr int advisor_button = 106;
+constexpr int chat_button = 107;
+constexpr UINT first_step_button = 110;
+constexpr auto step_count = sai::hermes_guide.size();
+constexpr float margin = 28;
+constexpr float header_height = 58;
+constexpr float recommendation_top = 126;
+constexpr float recommendation_height = 106;
+constexpr float hardware_top = 396;
+constexpr float hardware_row = 37;
+constexpr float gpu_height = 50;
+constexpr float setup_footer_height = 60;
+constexpr float setup_body_top = 159;
+constexpr float step_top = 171;
+constexpr float step_padding = 18;
+constexpr float step_gap = 14;
 
-constexpr unsigned background = 0x0C111A;
-constexpr unsigned header = 0x101722;
-constexpr unsigned surface = 0x131C2A;
-constexpr unsigned border = 0x28364B;
-constexpr unsigned text = 0xF5F7FB;
-constexpr unsigned muted = 0xA7B3C6;
-constexpr unsigned lime = 0xC1F36B;
-constexpr unsigned violet = 0xB9AAFF;
-constexpr unsigned amber = 0xF2CB8A;
+constexpr unsigned background = 0x080808;
+constexpr unsigned header = 0x0D0D0D;
+constexpr unsigned surface = 0x121212;
+constexpr unsigned border = 0x2C2C2C;
+constexpr unsigned text = 0xF3F3F3;
+constexpr unsigned muted = 0xAFAFAF;
+constexpr unsigned red = 0xFF7972;
+constexpr unsigned green = 0x77D597;
 
 constexpr auto bounds(float x, float y, float width, float height) {
     return D2D1_RECT_F{x, y, x + width, y + height};
@@ -45,8 +61,8 @@ constexpr auto color_ref(unsigned rgb) {
     return RGB((rgb >> 16) & 255, (rgb >> 8) & 255, rgb & 255);
 }
 
-enum class Type { eyebrow, body, wrapped, strong, section, model, title, count };
-enum class Symbol { brand, layers, bolt, cpu, gpu, shield };
+enum class Type { body, wrapped, strong, section, model, title, code, count };
+enum class View { advisor, guide, chat };
 
 class Canvas {
 public:
@@ -57,24 +73,21 @@ public:
     void translate(float y);
     void clip(D2D1_RECT_F area);
     void unclip();
-    void fill(D2D1_RECT_F area, unsigned rgb, float radius = 0);
-    void outline(D2D1_RECT_F area, unsigned rgb, float radius);
+    void fill(D2D1_RECT_F area, unsigned rgb);
+    void outline(D2D1_RECT_F area, unsigned rgb);
     void rule(float x, float y, float width, unsigned rgb);
-    void wash(float width);
     void label(std::wstring_view value, Type style, D2D1_RECT_F area, unsigned rgb = text,
                DWRITE_TEXT_ALIGNMENT align = DWRITE_TEXT_ALIGNMENT_LEADING);
-    void icon(Symbol symbol, float x, float y, unsigned rgb, unsigned tile, float size = 40);
+    float measure(std::wstring_view value, Type style, float width) const;
 
 private:
     void ink(unsigned rgb);
-    void segment(float x1, float y1, float x2, float y2, float weight = 1.65f);
 
     ComPtr<ID2D1Factory> d2d_;
     ComPtr<IDWriteFactory> write_;
     std::array<ComPtr<IDWriteTextFormat>, static_cast<std::size_t>(Type::count)> formats_;
     ComPtr<ID2D1HwndRenderTarget> target_;
     ComPtr<ID2D1SolidColorBrush> brush_;
-    ComPtr<ID2D1LinearGradientBrush> wash_;
 };
 
 bool Canvas::initialize() {
@@ -86,22 +99,25 @@ bool Canvas::initialize() {
 
     struct Style { float size; DWRITE_FONT_WEIGHT weight; };
     constexpr Style styles[]{
-        {11, DWRITE_FONT_WEIGHT_BOLD}, {13.5f, DWRITE_FONT_WEIGHT_NORMAL},
-        {13.5f, DWRITE_FONT_WEIGHT_NORMAL}, {14, DWRITE_FONT_WEIGHT_SEMI_BOLD},
-        {20, DWRITE_FONT_WEIGHT_SEMI_BOLD}, {35, DWRITE_FONT_WEIGHT_SEMI_BOLD},
-        {38, DWRITE_FONT_WEIGHT_SEMI_BOLD},
+        {13.5f, DWRITE_FONT_WEIGHT_NORMAL}, {13.5f, DWRITE_FONT_WEIGHT_NORMAL},
+        {14, DWRITE_FONT_WEIGHT_SEMI_BOLD}, {17, DWRITE_FONT_WEIGHT_SEMI_BOLD},
+        {25, DWRITE_FONT_WEIGHT_SEMI_BOLD}, {28, DWRITE_FONT_WEIGHT_SEMI_BOLD},
+        {13, DWRITE_FONT_WEIGHT_NORMAL},
     };
     static_assert(std::size(styles) == static_cast<std::size_t>(Type::count));
     for (std::size_t index = 0; index < formats_.size(); ++index) {
         auto& format = formats_[index];
         const auto style = styles[index];
-        if (FAILED(write_->CreateTextFormat(L"Segoe UI", nullptr, style.weight,
+        const auto type = static_cast<Type>(index);
+        if (FAILED(write_->CreateTextFormat(type == Type::code ? L"Consolas" : L"Segoe UI", nullptr, style.weight,
                 DWRITE_FONT_STYLE_NORMAL, DWRITE_FONT_STRETCH_NORMAL, style.size, L"en-US",
                 format.GetAddressOf()))) {
             return false;
         }
         format->SetParagraphAlignment(DWRITE_PARAGRAPH_ALIGNMENT_NEAR);
-        if (index != static_cast<std::size_t>(Type::wrapped)) {
+        if (type == Type::code) {
+            format->SetWordWrapping(DWRITE_WORD_WRAPPING_CHARACTER);
+        } else if (type != Type::wrapped) {
             format->SetWordWrapping(DWRITE_WORD_WRAPPING_NO_WRAP);
             ComPtr<IDWriteInlineObject> ellipsis;
             if (SUCCEEDED(write_->CreateEllipsisTrimmingSign(format.Get(), ellipsis.GetAddressOf()))) {
@@ -127,13 +143,6 @@ bool Canvas::begin(HWND window, UINT dpi) {
             target_.Reset();
             return false;
         }
-        const D2D1_GRADIENT_STOP stops[]{{0, D2D1::ColorF(0x152137)}, {1, D2D1::ColorF(background)}};
-        ComPtr<ID2D1GradientStopCollection> collection;
-        if (SUCCEEDED(target_->CreateGradientStopCollection(stops, 2, collection.GetAddressOf()))) {
-            target_->CreateLinearGradientBrush(
-                D2D1::LinearGradientBrushProperties(D2D1::Point2F(), D2D1::Point2F(0, 270)),
-                collection.Get(), wash_.GetAddressOf());
-        }
     }
     target_->BeginDraw();
     target_->SetTransform(D2D1::Matrix3x2F::Identity());
@@ -143,7 +152,6 @@ bool Canvas::begin(HWND window, UINT dpi) {
 
 void Canvas::end() {
     if (target_->EndDraw() == D2DERR_RECREATE_TARGET) {
-        wash_.Reset();
         brush_.Reset();
         target_.Reset();
     }
@@ -176,29 +184,18 @@ void Canvas::ink(unsigned rgb) {
     brush_->SetColor(D2D1::ColorF(rgb));
 }
 
-void Canvas::fill(D2D1_RECT_F area, unsigned rgb, float radius) {
+void Canvas::fill(D2D1_RECT_F area, unsigned rgb) {
     ink(rgb);
-    if (radius) {
-        target_->FillRoundedRectangle(D2D1::RoundedRect(area, radius, radius), brush_.Get());
-    } else {
-        target_->FillRectangle(area, brush_.Get());
-    }
+    target_->FillRectangle(area, brush_.Get());
 }
 
-void Canvas::outline(D2D1_RECT_F area, unsigned rgb, float radius) {
+void Canvas::outline(D2D1_RECT_F area, unsigned rgb) {
     ink(rgb);
-    target_->DrawRoundedRectangle(D2D1::RoundedRect(area, radius, radius), brush_.Get());
+    target_->DrawRectangle(area, brush_.Get());
 }
 
 void Canvas::rule(float x, float y, float width, unsigned rgb) {
-    ink(rgb);
-    segment(x, y, x + width, y, 1);
-}
-
-void Canvas::wash(float width) {
-    if (wash_) {
-        target_->FillRectangle(bounds(0, header_height, width, 220), wash_.Get());
-    }
+    fill(bounds(x, y, width, 1), rgb);
 }
 
 void Canvas::label(std::wstring_view value, Type style, D2D1_RECT_F area, unsigned rgb,
@@ -210,61 +207,31 @@ void Canvas::label(std::wstring_view value, Type style, D2D1_RECT_F area, unsign
                       brush_.Get(), D2D1_DRAW_TEXT_OPTIONS_CLIP);
 }
 
-void Canvas::segment(float x1, float y1, float x2, float y2, float weight) {
-    target_->DrawLine(D2D1::Point2F(x1, y1), D2D1::Point2F(x2, y2), brush_.Get(), weight);
-}
-
-void Canvas::icon(Symbol symbol, float x, float y, unsigned rgb, unsigned tile, float size) {
-    fill(bounds(x, y, size, size), tile, 10);
-    const float center_x = x + size / 2;
-    const float center_y = y + size / 2;
-    const auto stroke = [&](float x1, float y1, float x2, float y2) {
-        segment(center_x + x1, center_y + y1, center_x + x2, center_y + y2);
-    };
-    ink(rgb);
-    switch (symbol) {
-        case Symbol::brand:
-            stroke(-8, 6, -8, 1); stroke(-8, 1, -3, 1); stroke(-3, 1, -3, -4);
-            stroke(-3, -4, 2, -4); stroke(2, -4, 2, -8); stroke(2, -8, 8, -8);
-            stroke(-4, 7, 1, 7); stroke(1, 7, 1, 3); stroke(1, 3, 7, 3);
-            break;
-        case Symbol::layers:
-            stroke(-11, -4, 0, -10); stroke(0, -10, 11, -4);
-            stroke(11, -4, 0, 2); stroke(0, 2, -11, -4);
-            stroke(-11, 1, 0, 7); stroke(0, 7, 11, 1);
-            stroke(-11, 6, 0, 12); stroke(0, 12, 11, 6);
-            break;
-        case Symbol::bolt:
-            stroke(2, -12, -9, 2); stroke(-9, 2, -1, 2);
-            stroke(-1, 2, -3, 12); stroke(-3, 12, 9, -3);
-            stroke(9, -3, 1, -3); stroke(1, -3, 2, -12);
-            break;
-        case Symbol::cpu:
-            target_->DrawRoundedRectangle(D2D1::RoundedRect(bounds(center_x - 7, center_y - 7, 14, 14), 2, 2),
-                                          brush_.Get(), 1.4f);
-            for (float pin : {-4, 0, 4}) {
-                stroke(pin, -7, pin, -10); stroke(pin, 7, pin, 10);
-                stroke(-7, pin, -10, pin); stroke(7, pin, 10, pin);
-            }
-            break;
-        case Symbol::gpu:
-            target_->DrawRoundedRectangle(D2D1::RoundedRect(bounds(center_x - 10, center_y - 6, 20, 12), 2, 2),
-                                          brush_.Get(), 1.4f);
-            target_->DrawEllipse(D2D1::Ellipse(D2D1::Point2F(center_x - 3, center_y), 3, 3), brush_.Get(), 1.3f);
-            stroke(4, -2, 7, -2); stroke(4, 2, 7, 2); stroke(-6, 6, -6, 9); stroke(5, 6, 5, 9);
-            break;
-        case Symbol::shield:
-            stroke(-6, -2, -6, -6); stroke(-6, -6, 0, -8); stroke(0, -8, 6, -6);
-            stroke(6, -6, 6, 0); stroke(6, 0, 0, 7); stroke(0, 7, -6, 0); stroke(-6, 0, -6, -2);
-            stroke(-3, -1, -1, 2); stroke(-1, 2, 3, -2);
-            break;
+float Canvas::measure(std::wstring_view value, Type style, float width) const {
+    ComPtr<IDWriteTextLayout> layout;
+    DWRITE_TEXT_METRICS metrics{};
+    if (SUCCEEDED(write_->CreateTextLayout(value.data(), static_cast<UINT32>(value.size()),
+            formats_[static_cast<std::size_t>(style)].Get(), width, 2048, layout.GetAddressOf()))) {
+        layout->GetMetrics(&metrics);
     }
+    return std::max(metrics.height, 18.0f);
 }
 
 struct Scan {
     sai::Hardware hardware;
     std::optional<sai::Advice> advice;
     std::wstring error;
+};
+
+struct StepLayout {
+    float instructions_height = 0;
+    float example_height = 0;
+    float note_height = 0;
+
+    float instructions_top() const { return step_top + 52; }
+    float example_top() const { return instructions_top() + instructions_height + step_gap; }
+    float note_top() const { return example_top() + example_height + step_gap; }
+    float bottom() const { return note_top() + note_height + step_padding; }
 };
 
 class Window {
@@ -280,8 +247,14 @@ private:
     void accept_scan();
     void resize();
     void scroll_by(float distance);
+    HWND add_button(int id, LPCWSTR label, bool visible);
+    void show_view(View view);
+    void select_step(std::size_t step);
+    void copy_step() const;
+    void open_step_docs() const;
     void draw();
-    void recommendation(float x, float width, const sai::Choice* choice, bool everyday);
+    void draw_setup_step(float width);
+    void recommendation(float y, float width, const sai::Choice* choice, bool everyday);
     void hardware(float width);
     void paint_button(const DRAWITEMSTRUCT& item) const;
     int px(float dips) const { return static_cast<int>(dips * dpi_ / 96.0f + 0.5f); }
@@ -290,11 +263,23 @@ private:
     HINSTANCE application_;
     HWND window_ = nullptr;
     HWND rescan_ = nullptr;
+    HWND advisor_ = nullptr;
+    HWND setup_ = nullptr;
+    HWND chat_ = nullptr;
+    HWND chat_panel_ = nullptr;
+    std::array<HWND, step_count> step_buttons_{};
+    HWND back_ = nullptr;
+    HWND next_ = nullptr;
+    HWND copy_ = nullptr;
+    HWND docs_ = nullptr;
     UINT dpi_ = 96;
     Canvas canvas_;
     float scroll_ = 0;
     float max_scroll_ = 0;
     bool scanning_ = false;
+    View view_ = View::advisor;
+    std::size_t step_ = 0;
+    StepLayout step_layout_;
     Scan current_;
     Scan pending_;
     std::mutex pending_mutex_;
@@ -322,7 +307,7 @@ bool Window::open(int show) {
     MONITORINFO monitor{};
     monitor.cbSize = sizeof(monitor);
     GetMonitorInfoW(MonitorFromPoint(POINT{0, 0}, MONITOR_DEFAULTTOPRIMARY), &monitor);
-    RECT requested{0, 0, px(1000), px(720)};
+    RECT requested{0, 0, px(900), px(650)};
     AdjustWindowRectExForDpi(&requested, style, FALSE, 0, dpi_);
     const LONG available_width = monitor.rcWork.right - monitor.rcWork.left;
     const LONG available_height = monitor.rcWork.bottom - monitor.rcWork.top;
@@ -350,14 +335,20 @@ bool Window::open(int show) {
 int Window::run() {
     MSG message{};
     while (GetMessageW(&message, nullptr, 0, 0) > 0) {
-        if (message.message == WM_KEYDOWN && message.wParam == VK_F5) {
+        if (message.message == WM_KEYDOWN && message.wParam == VK_ESCAPE && view_ == View::guide) {
+            show_view(View::advisor);
+            continue;
+        }
+        if (message.message == WM_KEYDOWN && message.wParam == VK_F5 && view_ == View::advisor) {
             scan();
             continue;
         }
-        if (message.message == WM_KEYDOWN && (message.wParam == VK_NEXT || message.wParam == VK_PRIOR)) {
+        if (message.message == WM_KEYDOWN && view_ != View::chat && (message.wParam == VK_NEXT || message.wParam == VK_PRIOR)) {
             RECT area{};
             GetClientRect(window_, &area);
-            scroll_by((dips(area.bottom) - header_height - 24) * (message.wParam == VK_NEXT ? 1 : -1));
+            const float fixed_height = view_ == View::guide ? setup_body_top + setup_footer_height : header_height;
+            const float viewport = dips(area.bottom) - fixed_height;
+            scroll_by((viewport - 24) * (message.wParam == VK_NEXT ? 1 : -1));
             continue;
         }
         if (!IsDialogMessageW(window_, &message)) {
@@ -382,9 +373,22 @@ LRESULT Window::handle(UINT message, WPARAM wparam, LPARAM lparam) {
     switch (message) {
         case WM_CREATE:
             dpi_ = GetDpiForWindow(window_);
-            rescan_ = CreateWindowExW(0, L"BUTTON", L"Rescan", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_OWNERDRAW,
-                0, 0, 0, 0, window_, reinterpret_cast<HMENU>(static_cast<INT_PTR>(rescan_button)), application_, nullptr);
-            if (!rescan_) {
+            rescan_ = add_button(rescan_button, L"Rescan", true);
+            advisor_ = add_button(advisor_button, L"Advisor", true);
+            setup_ = add_button(setup_button, L"Hermes Setup", true);
+            chat_ = add_button(chat_button, L"Chat", true);
+            for (std::size_t step = 0; step < step_count; ++step) {
+                step_buttons_[step] = add_button(first_step_button + static_cast<int>(step),
+                    sai::hermes_guide[step].label.data(), false);
+                if (!step_buttons_[step]) {
+                    return -1;
+                }
+            }
+            back_ = add_button(back_button, L"Back", false);
+            copy_ = add_button(copy_button, L"Copy", false);
+            docs_ = add_button(docs_button, L"Docs", false);
+            next_ = add_button(next_button, L"Next", false);
+            if (!rescan_ || !advisor_ || !setup_ || !chat_ || !back_ || !copy_ || !docs_ || !next_) {
                 return -1;
             }
             resize();
@@ -422,11 +426,37 @@ LRESULT Window::handle(UINT message, WPARAM wparam, LPARAM lparam) {
             EndPaint(window_, &paint);
             return 0;
         }
-        case WM_COMMAND:
-            if (LOWORD(wparam) == rescan_button && HIWORD(wparam) == BN_CLICKED) {
-                scan();
+        case WM_COMMAND: {
+            if (HIWORD(wparam) == BN_CLICKED) {
+                const UINT id = LOWORD(wparam);
+                switch (id) {
+                    case rescan_button: scan(); break;
+                    case advisor_button: show_view(View::advisor); break;
+                    case setup_button: show_view(View::guide); break;
+                    case chat_button: show_view(View::chat); break;
+                    case back_button:
+                        if (step_ > 0) {
+                            select_step(step_ - 1);
+                        }
+                        break;
+                    case next_button:
+                        if (step_ + 1 == step_count) {
+                            show_view(View::advisor);
+                        } else {
+                            select_step(step_ + 1);
+                        }
+                        break;
+                    case copy_button: copy_step(); break;
+                    case docs_button: open_step_docs(); break;
+                    default:
+                        if (view_ == View::guide && id >= first_step_button && id < first_step_button + step_count) {
+                            select_step(id - first_step_button);
+                        }
+                        break;
+                }
             }
             return 0;
+        }
         case WM_DRAWITEM:
             paint_button(*reinterpret_cast<DRAWITEMSTRUCT*>(lparam));
             return TRUE;
@@ -478,15 +508,142 @@ void Window::accept_scan() {
     resize();
 }
 
+HWND Window::add_button(int id, LPCWSTR label, bool visible) {
+    const DWORD style = WS_CHILD | WS_TABSTOP | BS_OWNERDRAW | (visible ? WS_VISIBLE : 0);
+    return CreateWindowExW(0, L"BUTTON", label, style, 0, 0, 0, 0, window_,
+        reinterpret_cast<HMENU>(static_cast<INT_PTR>(id)), application_, nullptr);
+}
+
+void Window::show_view(View view) {
+    if (view == view_) {
+        return;
+    }
+    if (view == View::chat && !chat_panel_) {
+        chat_panel_ = sai::chat::create_panel(application_, window_);
+        if (!chat_panel_) {
+            MessageBoxW(window_, L"The chat panel could not be opened.", L"SAI-LLM", MB_OK | MB_ICONERROR);
+            return;
+        }
+    }
+    view_ = view;
+    scroll_ = 0;
+    const bool guide = view == View::guide;
+    ShowWindow(rescan_, view == View::advisor ? SW_SHOW : SW_HIDE);
+    for (const auto button : step_buttons_) {
+        ShowWindow(button, guide ? SW_SHOW : SW_HIDE);
+    }
+    for (const auto button : {back_, copy_, docs_, next_}) {
+        ShowWindow(button, guide ? SW_SHOW : SW_HIDE);
+    }
+    if (chat_panel_) {
+        ShowWindow(chat_panel_, view == View::chat ? SW_SHOW : SW_HIDE);
+    }
+    if (guide) {
+        select_step(step_);
+    } else {
+        resize();
+    }
+    for (const auto button : {advisor_, setup_, chat_}) {
+        InvalidateRect(button, nullptr, FALSE);
+    }
+    SetFocus(view == View::advisor ? advisor_ : (guide ? setup_ : chat_));
+}
+
+void Window::select_step(std::size_t step) {
+    step_ = step;
+    scroll_ = 0;
+    const auto& content = sai::hermes_guide[step_];
+    if (step_ == 0 && GetFocus() == back_) {
+        SetFocus(next_);
+    }
+    EnableWindow(back_, step_ > 0);
+    SetWindowTextW(copy_, content.copy_label.data());
+    SetWindowTextW(docs_, content.link_label.data());
+    SetWindowTextW(next_, step_ + 1 == step_count ? L"Done" : L"Next");
+    for (const auto button : step_buttons_) {
+        InvalidateRect(button, nullptr, FALSE);
+    }
+    resize();
+}
+
+void Window::copy_step() const {
+    const auto value = sai::hermes_guide[step_].clipboard;
+    std::wstring clipboard_text;
+    clipboard_text.reserve(value.size() + 16);
+    for (const auto character : value) {
+        if (character == L'\n') {
+            clipboard_text.push_back(L'\r');
+        }
+        clipboard_text.push_back(character);
+    }
+
+    const auto memory = GlobalAlloc(GMEM_MOVEABLE, (clipboard_text.size() + 1) * sizeof(wchar_t));
+    auto* buffer = memory ? static_cast<wchar_t*>(GlobalLock(memory)) : nullptr;
+    bool copied = false;
+    if (buffer) {
+        std::copy_n(clipboard_text.c_str(), clipboard_text.size() + 1, buffer);
+        GlobalUnlock(memory);
+        if (OpenClipboard(window_)) {
+            copied = EmptyClipboard() && SetClipboardData(CF_UNICODETEXT, memory);
+            CloseClipboard();
+        }
+    }
+    if (!copied && memory) {
+        GlobalFree(memory);
+    }
+    SetWindowTextW(copy_, copied ? L"Copied" : L"Copy failed");
+}
+
+void Window::open_step_docs() const {
+    const auto url = sai::hermes_guide[step_].url;
+    const auto result = ShellExecuteW(window_, L"open", url.data(), nullptr, nullptr, SW_SHOWNORMAL);
+    if (reinterpret_cast<INT_PTR>(result) <= 32) {
+        MessageBoxW(window_, L"Windows could not open the documentation link.", L"Hermes Setup", MB_OK | MB_ICONERROR);
+    }
+}
+
 void Window::resize() {
     RECT area{};
     GetClientRect(window_, &area);
     if (rescan_) {
-        MoveWindow(rescan_, area.right - px(margin + 108), px(23), px(108), px(34), TRUE);
+        MoveWindow(rescan_, area.right - px(margin + 94), px(13), px(94), px(32), TRUE);
+        const auto nav_right = area.right - px(margin + (view_ == View::advisor ? 104 : 0));
+        MoveWindow(chat_, nav_right - px(74), px(13), px(74), px(32), TRUE);
+        MoveWindow(setup_, nav_right - px(209), px(13), px(126), px(32), TRUE);
+        MoveWindow(advisor_, nav_right - px(301), px(13), px(83), px(32), TRUE);
     }
-    const float cards = static_cast<float>(std::max<std::size_t>(current_.hardware.adapters.size(), 1));
-    const float bottom = hardware_top + processor_height + cards * gpu_height + 58;
-    max_scroll_ = std::max(0.0f, bottom - dips(area.bottom));
+    float viewport_bottom = dips(area.bottom);
+    float content_bottom = viewport_bottom;
+    if (view_ == View::guide) {
+        viewport_bottom -= setup_footer_height;
+        constexpr float gap = 8;
+        const float content_width = dips(area.right) - 2 * margin;
+        const float tab_width = (content_width - (step_count - 1) * gap) / step_count;
+        float tab_left = margin;
+        for (const auto button : step_buttons_) {
+            MoveWindow(button, px(tab_left), px(113), px(tab_left + tab_width) - px(tab_left), px(34), TRUE);
+            tab_left += tab_width + gap;
+        }
+        const auto button_top = px(viewport_bottom + 13);
+        const auto middle = area.right / 2;
+        MoveWindow(back_, px(margin), button_top, px(82), px(34), TRUE);
+        MoveWindow(copy_, middle - px(168), button_top, px(162), px(34), TRUE);
+        MoveWindow(docs_, middle + px(6), button_top, px(162), px(34), TRUE);
+        MoveWindow(next_, area.right - px(margin + 82), button_top, px(82), px(34), TRUE);
+
+        const auto& step = sai::hermes_guide[step_];
+        const float inner = std::max(1.0f, dips(area.right) - 2 * (margin + step_padding));
+        step_layout_.instructions_height = canvas_.measure(step.instructions, Type::wrapped, inner);
+        step_layout_.example_height = canvas_.measure(step.example, Type::code, std::max(1.0f, inner - 28)) + 24;
+        step_layout_.note_height = canvas_.measure(step.note, Type::wrapped, inner);
+        content_bottom = step_layout_.bottom() + margin;
+    } else if (view_ == View::advisor) {
+        const float rows = static_cast<float>(std::max<std::size_t>(current_.hardware.adapters.size(), 1));
+        content_bottom = hardware_top + 2 * hardware_row + rows * gpu_height + 61;
+    } else {
+        MoveWindow(chat_panel_, 0, px(header_height), area.right, std::max(0L, area.bottom - px(header_height)), TRUE);
+    }
+    max_scroll_ = std::max(0.0f, content_bottom - viewport_bottom);
     scroll_ = std::clamp(scroll_, 0.0f, max_scroll_);
     canvas_.resize(window_, dpi_);
     InvalidateRect(window_, nullptr, FALSE);
@@ -503,25 +660,40 @@ void Window::paint_button(const DRAWITEMSTRUCT& item) const {
     const bool disabled = item.itemState & ODS_DISABLED;
     const bool pressed = item.itemState & ODS_SELECTED;
     const bool focused = item.itemState & ODS_FOCUS;
-    const auto brush = CreateSolidBrush(color_ref(pressed ? 0x30445A : 0x182439));
-    const auto pen = CreatePen(PS_SOLID, 1, color_ref(focused ? lime : 0x40516C));
-    const auto old_brush = SelectObject(dc, brush);
-    const auto old_pen = SelectObject(dc, pen);
-    RoundRect(dc, area.left, area.top, area.right, area.bottom, px(9), px(9));
-    SelectObject(dc, old_brush);
-    SelectObject(dc, old_pen);
-    DeleteObject(brush);
-    DeleteObject(pen);
+    const bool step_button = item.CtlID >= first_step_button && item.CtlID < first_step_button + step_count;
+    const bool selected_step = step_button && item.CtlID - first_step_button == step_;
+    const bool active_view = (item.CtlID == advisor_button && view_ == View::advisor)
+        || (item.CtlID == setup_button && view_ == View::guide)
+        || (item.CtlID == chat_button && view_ == View::chat);
+    const bool accent = selected_step || active_view || item.CtlID == next_button;
+    const auto fill_color = accent ? (pressed ? 0x253A2C : 0x142219) : (pressed ? 0x292929 : surface);
+    const auto edge_color = focused ? red : (accent ? 0x41634C : 0x3B3B3B);
+    const auto brush = static_cast<HBRUSH>(GetStockObject(DC_BRUSH));
+    const auto old_color = SetDCBrushColor(dc, color_ref(fill_color));
+    FillRect(dc, &area, brush);
+    SetDCBrushColor(dc, color_ref(edge_color));
+    FrameRect(dc, &area, brush);
+    if (selected_step) {
+        const RECT underline{area.left, area.bottom - px(2), area.right, area.bottom};
+        SetDCBrushColor(dc, color_ref(green));
+        FillRect(dc, &underline, brush);
+    }
+    SetDCBrushColor(dc, old_color);
 
     HFONT font = CreateFontW(-px(13), 0, 0, 0, FW_SEMIBOLD, FALSE, FALSE, FALSE, DEFAULT_CHARSET,
         OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY, DEFAULT_PITCH, L"Segoe UI");
     const auto old_font = SelectObject(dc, font);
     SetBkMode(dc, TRANSPARENT);
-    SetTextColor(dc, color_ref(disabled ? muted : text));
+    SetTextColor(dc, color_ref(accent ? green : (disabled ? muted : text)));
     RECT label_area = area;
+    if (step_button) {
+        label_area.left += px(10);
+        label_area.right -= px(10);
+    }
     std::array<wchar_t, 24> label{};
     GetWindowTextW(item.hwndItem, label.data(), static_cast<int>(label.size()));
-    DrawTextW(dc, label.data(), -1, &label_area, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
+    const UINT alignment = step_button ? DT_LEFT : DT_CENTER;
+    DrawTextW(dc, label.data(), -1, &label_area, alignment | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS);
     SelectObject(dc, old_font);
     DeleteObject(font);
 }
@@ -532,126 +704,152 @@ void Window::draw() {
     const float width = dips(area.right);
     const float height = dips(area.bottom);
     const float content = width - 2 * margin;
-    if (content < 100 || height < 80) {
+    const float viewport_top = view_ == View::guide ? setup_body_top : header_height;
+    const float viewport_bottom = height - (view_ == View::guide ? setup_footer_height : 0);
+    if (content < 100 || viewport_bottom < viewport_top) {
         return;
     }
 
-    canvas_.wash(width);
-    canvas_.clip(bounds(0, header_height, width, height - header_height));
+    canvas_.clip(bounds(0, viewport_top, width, viewport_bottom - viewport_top));
     canvas_.translate(-scroll_);
-    canvas_.label(L"Model advisor", Type::title, bounds(margin, 103, content, 56));
-    canvas_.label(L"Recommendations based on your CPU, memory, and graphics hardware.", Type::body,
-                  bounds(margin + 1, 154, content, 25), muted);
-    const float half = (content - 16) / 2;
-    const auto& advice = current_.advice;
-    recommendation(margin, half, advice && advice->most_capable ? &*advice->most_capable : nullptr, false);
-    recommendation(margin + half + 16, half, advice ? &advice->everyday : nullptr, true);
-    hardware(content);
+    if (view_ == View::guide) {
+        draw_setup_step(content);
+    } else if (view_ == View::advisor) {
+        canvas_.label(L"Model advisor", Type::title, bounds(margin, 78, content, 38));
+        const auto panel = bounds(margin, recommendation_top, content, 2 * recommendation_height);
+        canvas_.fill(panel, surface);
+        canvas_.outline(panel, border);
+        canvas_.rule(margin, recommendation_top + recommendation_height, content, border);
+        const auto& advice = current_.advice;
+        recommendation(recommendation_top, content, advice && advice->most_capable ? &*advice->most_capable : nullptr, false);
+        recommendation(recommendation_top + recommendation_height, content, advice ? &advice->everyday : nullptr, true);
+        hardware(content);
+    }
     canvas_.translate(0);
     canvas_.unclip();
 
     canvas_.fill(bounds(0, 0, width, header_height), header);
     canvas_.rule(0, header_height - 1, width, border);
-    canvas_.icon(Symbol::brand, margin, 22, lime, 0x223523, 34);
-    canvas_.label(L"SAI-LLM", Type::strong, bounds(margin + 46, 28, 180, 24));
+    canvas_.label(L"SAI-LLM", Type::section, bounds(margin, 17, 180, 24));
 
+    if (view_ == View::guide) {
+        canvas_.label(L"Hermes Setup", Type::title, bounds(margin, 73, content, 38));
+        canvas_.fill(bounds(0, viewport_bottom, width, setup_footer_height), header);
+        canvas_.rule(0, viewport_bottom, width, border);
+    }
     if (max_scroll_ > 1) {
-        const float track = height - header_height - 16;
+        const float track = viewport_bottom - viewport_top - 16;
         const float thumb = std::max(22.0f, track * track / (track + max_scroll_));
-        const float top = header_height + 8 + (track - thumb) * scroll_ / max_scroll_;
-        canvas_.fill(bounds(width - 8, top, 4, thumb), 0x3D506C, 2);
+        const float top = viewport_top + 8 + (track - thumb) * scroll_ / max_scroll_;
+        canvas_.fill(bounds(width - 8, top, 3, thumb), 0x4C4C4C);
     }
 }
 
-void Window::recommendation(float x, float width, const sai::Choice* choice, bool everyday) {
-    const float inner = x + 23;
-    const float usable = width - 46;
-    const auto tint = everyday ? lime : violet;
-    const auto tile = everyday ? 0x213627 : 0x282640;
-    const auto panel = everyday ? 0x12251F : 0x191E32;
-    const auto edge = everyday ? 0x385941 : 0x3D3959;
-    const auto y = card_top;
-    const auto frame = bounds(x, y, width, card_height);
-    canvas_.fill(frame, panel, 16);
-    canvas_.outline(frame, edge, 16);
-    canvas_.icon(everyday ? Symbol::bolt : Symbol::layers, x + width - 68, y + 20, tint, tile, 44);
-    canvas_.label(everyday ? L"EVERYDAY PICK" : L"MOST CAPABLE", Type::eyebrow,
-                  bounds(inner, y + 21, usable - 48, 23), tint);
+void Window::draw_setup_step(float width) {
+    const auto card = bounds(margin, step_top, width, step_layout_.bottom() - step_top);
+    canvas_.fill(card, surface);
+    canvas_.outline(card, border);
+    const float x = margin + step_padding;
+    const float inner = width - 2 * step_padding;
+    const auto& step = sai::hermes_guide[step_];
+    canvas_.label(step.title, Type::section, bounds(x, step_top + 17, inner, 27));
+    canvas_.label(step.instructions, Type::wrapped,
+                  bounds(x, step_layout_.instructions_top(), inner, step_layout_.instructions_height));
+    canvas_.fill(bounds(x, step_layout_.example_top(), inner, step_layout_.example_height), background);
+    canvas_.label(step.example, Type::code,
+                  bounds(x + 14, step_layout_.example_top() + 12, inner - 28, step_layout_.example_height - 24), green);
+    canvas_.label(step.note, Type::wrapped,
+                  bounds(x, step_layout_.note_top(), inner, step_layout_.note_height), muted);
+}
+
+void Window::recommendation(float y, float width, const sai::Choice* choice, bool everyday) {
+    const auto accent = everyday ? green : red;
+    const float left = margin + 16;
+    const float model_x = left + 127;
+    const float right = margin + width - 16;
+    constexpr float details_width = 156;
+    const float details_x = right - details_width;
+    canvas_.fill(bounds(margin + 1, y + 1, 3, recommendation_height - 1), accent);
+    canvas_.label(everyday ? L"Everyday pick" : L"Most capable", Type::strong,
+                  bounds(left, y + 19, 112, 22), accent);
     const std::wstring_view name = choice ? choice->profile->name :
-        (scanning_ ? L"Scanning…" : (current_.error.empty() ? L"No full preset" : L"Unavailable"));
-    canvas_.label(name, Type::model, bounds(inner, y + 46, usable - 40, 56));
+        (scanning_ ? L"Scanning\u2026" : (current_.error.empty() ? L"No full preset" : L"Unavailable"));
+    canvas_.label(name, Type::model, bounds(model_x, y + 10, details_x - model_x - 12, 35));
 
     if (choice) {
-        const float chip_width = 108;
-        const float context_width = everyday ? usable - chip_width - 8 : usable;
         const auto context = std::wstring(choice->profile->context) + L" tokens";
-        canvas_.label(context, Type::strong, bounds(inner, y + 112, context_width, 24));
+        canvas_.label(context, Type::strong, bounds(details_x, y + 19, details_width, 22),
+                      text, DWRITE_TEXT_ALIGNMENT_TRAILING);
         if (everyday) {
-            const auto badge = choice->target_plausible ? L"20 tok/s target" : L"Speed uncertain";
-            canvas_.fill(bounds(inner + usable - chip_width, y + 109, chip_width, 25),
-                         choice->target_plausible ? 0x273C23 : 0x3D3223, 8);
-            canvas_.label(badge, Type::eyebrow, bounds(inner + usable - chip_width, y + 114, chip_width, 17),
-                          choice->target_plausible ? lime : amber, DWRITE_TEXT_ALIGNMENT_CENTER);
+            const auto speed = choice->target_plausible ? L"20 tok/s target" : L"Speed uncertain";
+            canvas_.label(speed, Type::body, bounds(details_x, y + 42, details_width, 20),
+                          choice->target_plausible ? green : muted, DWRITE_TEXT_ALIGNMENT_TRAILING);
         }
-        canvas_.label(choice->mode, Type::body, bounds(inner, y + 136, usable, 22), muted);
+        canvas_.label(choice->mode, Type::body, bounds(model_x, y + 42, details_x - model_x - 12, 20), muted);
     }
 
-    canvas_.rule(inner, y + 168, usable, edge);
     const auto reason = choice ? std::wstring_view(choice->reason)
         : (scanning_ ? L"Reading the hardware inventory."
                      : (current_.error.empty() ? L"The detected hardware is below the full-context presets." : L"Scan again to retry."));
-    canvas_.label(reason, Type::wrapped, bounds(inner, y + 181, usable, 42), muted);
+    canvas_.label(reason, Type::wrapped, bounds(model_x, y + 65, right - model_x, 38), muted);
 }
 
 void Window::hardware(float width) {
     const auto x = margin;
-    canvas_.label(L"Detected hardware", Type::section, bounds(x, hardware_top - 37, width, 30));
+    canvas_.label(L"Hardware", Type::section, bounds(x, hardware_top - 32, width, 24));
     const auto& pc = current_.hardware;
     const auto adapter_count = std::max<std::size_t>(pc.adapters.size(), 1);
-    const float panel_height = processor_height + gpu_height * static_cast<float>(adapter_count);
+    const float panel_height = 2 * hardware_row + gpu_height * static_cast<float>(adapter_count);
     const auto panel = bounds(x, hardware_top, width, panel_height);
-    canvas_.fill(panel, surface, 14);
-    canvas_.outline(panel, border, 14);
+    canvas_.fill(panel, surface);
+    canvas_.outline(panel, border);
 
     if (!current_.advice) {
-        const auto status = scanning_ ? L"Scanning local hardware…" : current_.error.c_str();
-        canvas_.label(status, Type::wrapped, bounds(x + 20, hardware_top + 24, width - 40, 52), muted);
+        const auto status = scanning_ ? L"Scanning local hardware\u2026" : current_.error.c_str();
+        canvas_.label(status, Type::wrapped, bounds(x + 16, hardware_top + 16, width - 32, 52), muted);
     } else {
-        const float value_width = std::min(width * 0.28f, 190.0f);
-        const float value_x = x + width - value_width - 20;
+        const float label_x = x + 16;
+        const float value_x = x + 76;
+        constexpr float detail_width = 185;
+        const float detail_x = x + width - 16 - detail_width;
+        const float value_width = detail_x - value_x - 12;
+
         const auto cores = pc.physical_cores ? std::to_wstring(pc.physical_cores) + L" physical cores" : L"Core count unavailable";
-        canvas_.icon(Symbol::cpu, x + 18, hardware_top + 17, 0xADD1FD, 0x22344C, 38);
-        canvas_.label(pc.cpu, Type::strong, bounds(x + 69, hardware_top + 15, value_x - x - 79, 24));
-        canvas_.label(cores, Type::body, bounds(x + 69, hardware_top + 38, value_x - x - 79, 22), muted);
-        canvas_.label(sai::gib(pc.ram_gib), Type::section, bounds(value_x, hardware_top + 9, value_width, 30),
-                      text, DWRITE_TEXT_ALIGNMENT_TRAILING);
-        canvas_.label(L"Usable system RAM", Type::body, bounds(value_x, hardware_top + 39, value_width, 21),
+        canvas_.label(L"CPU", Type::body, bounds(label_x, hardware_top + 9, 48, 20), muted);
+        canvas_.label(pc.cpu, Type::strong, bounds(value_x, hardware_top + 9, value_width, 22));
+        canvas_.label(cores, Type::body, bounds(detail_x, hardware_top + 9, detail_width, 20),
                       muted, DWRITE_TEXT_ALIGNMENT_TRAILING);
 
-        float row = hardware_top + processor_height;
+        const float ram_top = hardware_top + hardware_row;
+        canvas_.rule(x, ram_top, width, border);
+        canvas_.label(L"RAM", Type::body, bounds(label_x, ram_top + 9, 48, 20), muted);
+        canvas_.label(sai::gib(pc.ram_gib), Type::strong, bounds(value_x, ram_top + 9, value_width, 22));
+
+        float row = ram_top + hardware_row;
         if (pc.adapters.empty()) {
-            canvas_.rule(x + 18, row, width - 36, border);
-            canvas_.label(L"No GPU identified", Type::body, bounds(x + 21, row + 16, width - 40, 26), muted);
+            canvas_.rule(x, row, width, border);
+            canvas_.label(L"GPU", Type::body, bounds(label_x, row + 15, 48, 20), muted);
+            canvas_.label(L"No GPU identified", Type::body, bounds(value_x, row + 15, value_width, 22), muted);
         }
         for (const auto& card : pc.adapters) {
-            canvas_.rule(x + 18, row, width - 36, border);
-            canvas_.icon(Symbol::gpu, x + 20, row + 10, 0xADD1FD, 0x22344C, 34);
-            canvas_.label(card.name, Type::strong, bounds(x + 69, row + 16, value_x - x - 79, 24));
+            canvas_.rule(x, row, width, border);
+            canvas_.label(L"GPU", Type::body, bounds(label_x, row + 15, 48, 20), muted);
+            canvas_.label(card.name, Type::strong, bounds(value_x, row + 15, value_width, 22));
             const auto dedicated = card.dedicated_gib > 0 ? sai::gib(card.dedicated_gib) + L" dedicated" : L"Dedicated VRAM unavailable";
-            canvas_.label(dedicated, Type::strong, bounds(value_x, row + 8, value_width, 22),
+            const float memory_top = row + (card.shared_gib > 0 ? 6 : 15);
+            canvas_.label(dedicated, Type::strong, bounds(detail_x, memory_top, detail_width, 22),
                           text, DWRITE_TEXT_ALIGNMENT_TRAILING);
             if (card.shared_gib > 0) {
                 canvas_.label(sai::gib(card.shared_gib) + L" shared", Type::body,
-                              bounds(value_x, row + 28, value_width, 21), muted, DWRITE_TEXT_ALIGNMENT_TRAILING);
+                              bounds(detail_x, row + 26, detail_width, 20), muted, DWRITE_TEXT_ALIGNMENT_TRAILING);
             }
             row += gpu_height;
         }
     }
 
-    const float footer = hardware_top + panel_height + 13;
-    canvas_.icon(Symbol::shield, x + 1, footer, 0x91BEA8, background, 24);
-    canvas_.label(L"Read-only scan. Speed estimates are for a short prompt with the model already loaded.",
-                  Type::body, bounds(x + 31, footer + 3, width - 31, 24), muted);
+    const float footer = hardware_top + panel_height + 14;
+    canvas_.label(L"Speed estimates assume a short prompt and a loaded model.",
+                  Type::body, bounds(x, footer, width, 22), muted);
 }
 
 } // namespace

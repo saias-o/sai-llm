@@ -3,11 +3,14 @@ project(SaiLlmAdvisor LANGUAGES CXX)
 
 if(WIN32)
     enable_language(RC)
-    add_executable(SAI-LLM WIN32 main_windows.cpp hardware_windows.cpp advisor.cpp app.rc)
+    add_executable(SAI-LLM WIN32 main_windows.cpp hardware_windows.cpp advisor.cpp chat.cpp chat_windows.cpp
+        attachments.cpp pdf_ocr.cpp app.rc)
     target_include_directories(SAI-LLM PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
     target_compile_definitions(SAI-LLM PRIVATE UNICODE _UNICODE NOMINMAX WIN32_LEAN_AND_MEAN
         WINVER=0x0A00 _WIN32_WINNT=0x0A00)
-    target_link_libraries(SAI-LLM PRIVATE d2d1 dwrite dwmapi dxgi dxguid gdi32 user32 advapi32)
+    target_link_libraries(SAI-LLM PRIVATE d2d1 dwrite dwmapi dxgi dxguid gdi32 user32 advapi32 shell32 winhttp ole32
+        comctl32 comdlg32 crypt32 runtimeobject)
+    include(cmake/Pdfium.cmake)
     if(MINGW)
         target_link_options(SAI-LLM PRIVATE -municode -static)
     elseif(MSVC)

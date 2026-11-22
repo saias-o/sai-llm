@@ -3,6 +3,7 @@
 **/unsloth-cpu/
 **/unsloth-vulkan/
 **/__pycache__/
+**/PDFium-licenses/
 
 *.gguf
 *.gguf_file
