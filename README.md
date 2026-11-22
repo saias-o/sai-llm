@@ -47,13 +47,15 @@ Extract each runtime ZIP so that `llama-server.exe` is directly inside its desti
 
 ## Run the models
 
-The Windows router presets ship with CPU defaults for `sai-big` and `sai-smart`, and a two-device Vulkan split for `sai-flash`. Run `llama-server.exe --list-devices` from the extracted Vulkan directory and check `Sai-modeles.ini` before starting. On a single GPU, set `device` in `[sai-flash]` to its reported name and remove `split-mode` and `tensor-split`. For CPU-only Flash, set `device = none` and `n-gpu-layers = 0`, and remove both split settings. On a different CPU, review `threads`, `threads-batch` and the `[sai-smart]` CPU affinity settings. Removing `cpu-mask` and `cpu-strict` lets the operating system schedule the threads.
+The Windows router presets ship with CPU defaults for `sai-big` and `sai-smart`, and a two-device Vulkan split for `sai-flash`. Run `llama-server.exe --list-devices` from the extracted Vulkan directory and check `Sai-models.ini` before starting. On a single GPU, set `device` in `[sai-flash]` to its reported name and remove `split-mode` and `tensor-split`. For CPU-only Flash, set `device = none` and `n-gpu-layers = 0`, and remove both split settings. On a different CPU, review `threads`, `threads-batch` and the `[sai-smart]` CPU affinity settings. Removing `cpu-mask` and `cpu-strict` lets the operating system schedule the threads.
 
 ```powershell
-.\Lancer-Inkling.cmd
+.\Launch-Inkling.cmd
 ```
 
 The router serves `sai-big`, `sai-smart` and `sai-flash` at `http://127.0.0.1:8080/v1` and keeps one model loaded at a time.
+
+For the optional standalone CPU launcher, pass a context size and port. Add `quality` as the third argument to use all eight experts. For example, run `.\Launch-Inkling.cmd 10240 8080 quality`.
 
 For `sai-max`, run the Compose service on a host that meets the GPU and driver requirements in the [official vLLM recipe](https://recipes.vllm.ai/thinkingmachines/Inkling-2-Mini). The service preserves the original model quantization and serves `sai-max` at `http://127.0.0.1:8081/v1`. The context setting reserves capacity for up to 1,048,576 tokens, subject to the host's available GPU memory.
 
