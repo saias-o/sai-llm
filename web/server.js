@@ -207,7 +207,7 @@ function advisorRecommendation(hardware) {
   const vram = gpu.vramGB || 0;
   // Heuristic mirroring the native advisor profiles:
   //   sai-max  needs a real dGPU with enough VRAM (>= 12 GB comfortable for 500k ctx)
-  //   sai-smart: Bonsai CUDA at 64K context
+  //   sai-smart: Bonsai CUDA at 200K context
   //   sai-flash fallback (262k ctx) targeting ~20 t/s
   let capable = 'sai-flash', everyday = 'sai-flash';
   if (gpu.present && /nvidia/i.test(gpu.name)) {

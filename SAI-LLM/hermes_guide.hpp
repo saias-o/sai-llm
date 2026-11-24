@@ -38,7 +38,7 @@ inline constexpr auto hermes_providers = LR"(providers:
     default_model: sai-smart
     models:
       sai-smart:
-        context_length: 65536
+        context_length: 200000
         supports_vision: true
   sai-native:
     name: SAI Max

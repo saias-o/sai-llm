@@ -12,7 +12,7 @@ namespace {
 // Estimates include engine and context overhead plus host headroom.
 // Dedicated VRAM is considered per adapter, since most engines do not pool it.
 constexpr Profile max_profile{L"sai-max", L"500,000", 0, 10, 32};
-constexpr Profile smart_profile{L"sai-smart", L"65,536", 0, 12, 16};
+constexpr Profile smart_profile{L"sai-smart", L"200,000", 0, 12, 16};
 constexpr Profile flash_profile{L"sai-flash", L"262,144", 6, 4, 5};
 constexpr const Profile* profiles[]{&max_profile, &smart_profile, &flash_profile};
 constexpr auto ignore_case = std::regex_constants::icase;

@@ -43,7 +43,7 @@ Start the model you want to use, then run `node .\web\server.js` from the reposi
 | Profile | Model weights | Context limit | Default reasoning |
 | --- | --- | ---: | --- |
 | `sai-max` | Inkling 2 Mini UD-Q4_K_XL, 8 active experts | 500,000 | `xhigh` |
-| `sai-smart` | PrismML Ternary Bonsai 2 27B PTQ1_0 | 65,536 | `medium` |
+| `sai-smart` | PrismML Ternary Bonsai 2 27B PTQ1_0 | 200,000 | `medium` |
 | `sai-flash` | LFM3-1.7B Q4_K_M | 262,144 | `off` |
 
 ## Downloads
@@ -76,11 +76,11 @@ Run the command for the profile you want to use. Each server runs in its own ter
 
 | Profile | Base URL | Notes |
 | --- | --- | --- |
-| `sai-smart` | `http://127.0.0.1:8080/v1` | Uses Bonsai CUDA with a 64K context. The SAI chats can reuse an existing server on this port advertising `bonsai-2-27b`. |
+| `sai-smart` | `http://127.0.0.1:8080/v1` | Uses Bonsai CUDA with a 200,000-token context and a Q4 KV cache. The SAI chats can reuse an existing `bonsai-2-27b` server at its configured context size. |
 | `sai-max` | `http://127.0.0.1:8081/v1` | Uses Unsloth CUDA to split Inkling between NVIDIA VRAM and system RAM. |
 | `sai-flash` | `http://127.0.0.1:8082/v1` | Uses `Sai-models.local.ini` if present, or `Sai-models.ini`. |
 
-The [Bonsai startup script](bonsai/Start-Bonsai.cmd) uses the settings from the original Windows launcher. Set `BONSAI_CTX` or `BONSAI_EFFORT` before launch to override the default context of 65,536 tokens or the default `medium` reasoning effort. Stop Bonsai with Ctrl+C in its terminal or run `.\bonsai\Stop-Bonsai.ps1` in PowerShell. Use `-WhatIf` to check which process it would stop.
+Set `BONSAI_CTX` or `BONSAI_EFFORT` before launch to override the [Bonsai launcher's](bonsai/Start-Bonsai.cmd) defaults of 200,000 tokens and `medium` reasoning effort. Stop Bonsai with Ctrl+C in its terminal or run `.\bonsai\Stop-Bonsai.ps1` in PowerShell. Use `-WhatIf` to check which process it would stop.
 
 The Flash preset uses a two-device Vulkan split. For a single GPU, copy `Sai-models.local.ini.example` to `Sai-models.local.ini`. Run `llama-server.exe --list-devices` from the extracted Vulkan directory and set `device` in `[sai-flash]` to the reported name. For CPU-only Flash, set `device = none` and `n-gpu-layers = 0` in the local preset. Review `threads` and `threads-batch` to suit your CPU.
 
