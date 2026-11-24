@@ -151,24 +151,19 @@ Hardware scan_linux() {
     }
     hardware.physical_cores = static_cast<unsigned>(cores.size());
 
-    unsigned long long swap_kib = 0;
     std::ifstream memory("/proc/meminfo");
     while (std::getline(memory, line)) {
         std::istringstream entry(line);
         std::string key;
         unsigned long long kib = 0;
-        if (entry >> key >> kib) {
-            if (key == "MemTotal:") {
-                hardware.ram_gib = kib * 1024.0 / bytes_per_gib;
-            } else if (key == "SwapTotal:") {
-                swap_kib = kib;
-            }
+        if (entry >> key >> kib && key == "MemTotal:") {
+            hardware.ram_gib = kib * 1024.0 / bytes_per_gib;
+            break;
         }
     }
     if (hardware.ram_gib <= 0) {
         throw std::runtime_error("Linux did not report system memory.");
     }
-    hardware.commit_gib = hardware.ram_gib + swap_kib * 1024.0 / bytes_per_gib;
     hardware.adapters = linux_adapters();
     return hardware;
 }
@@ -191,7 +186,6 @@ Hardware scan_mac() {
     hardware.cpu_compatible = hardware.apple_silicon || hardware.avx2;
     hardware.physical_cores = sysctl_number<unsigned>("hw.physicalcpu");
     hardware.ram_gib = sysctl_number<std::uint64_t>("hw.memsize") / bytes_per_gib;
-    hardware.commit_gib = hardware.ram_gib;
     if (hardware.ram_gib <= 0) {
         throw std::runtime_error("macOS did not report system memory.");
     }

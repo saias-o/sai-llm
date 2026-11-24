@@ -3,6 +3,7 @@
 #include <array>
 #include <filesystem>
 #include <memory>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <thread>
@@ -19,9 +20,8 @@ struct Model {
 };
 
 inline constexpr std::array models{
-    Model{L"sai-flash", 8080, Reasoning::off},
-    Model{L"sai-smart", 8080, Reasoning::low},
-    Model{L"sai-big", 8080, Reasoning::medium},
+    Model{L"sai-flash", 8082, Reasoning::off},
+    Model{L"sai-smart", 8080, Reasoning::medium},
     Model{L"sai-max", 8081, Reasoning::extra_high},
 };
 
@@ -72,9 +72,12 @@ private:
     std::filesystem::path directory_;
 };
 
+enum class BackendStatus { confirm_start, loading, ready };
+
 struct Update {
     std::wstring text;
     std::wstring error;
+    std::optional<BackendStatus> backend;
     bool thinking = false;
     bool finished = false;
     bool stopped = false;
@@ -82,8 +85,9 @@ struct Update {
 
 class Request {
 public:
-    Request(const Conversation& conversation, const Settings& settings);
+    Request(Conversation conversation, const Settings& settings);
     ~Request();
+    void start_backend() const;
     void stop() const;
     Update take();
 

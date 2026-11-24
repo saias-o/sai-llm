@@ -160,7 +160,7 @@ value message_content(const Message& message, bool vision) {
     return value(std::move(images));
 }
 
-std::string encode_request(const Conversation& conversation, const Settings& settings) {
+std::string encode_request(const Conversation& conversation, const Settings& settings, const std::string& alias) {
     const auto& model = models.at(conversation.model);
     auto system = settings.system_prompt;
     if (!settings.memory.empty()) {
@@ -181,7 +181,7 @@ std::string encode_request(const Conversation& conversation, const Settings& set
         });
     }
     object body{
-        {"model", value(utf8(model.id))},
+        {"model", value(alias)},
         {"messages", value(std::move(messages))},
         {"stream", value(true)},
     };
@@ -194,13 +194,10 @@ std::string encode_request(const Conversation& conversation, const Settings& set
     } else if (effort != Reasoning::preset) {
         if (model.id == L"sai-max") {
             body.emplace("chat_template_kwargs", value(object{{"reasoning_effort", value(level.inkling_value)}}));
+        } else if (effort == Reasoning::off) {
+            body.emplace("chat_template_kwargs", value(object{{"enable_thinking", value(false)}}));
         } else {
-            object options{{"reasoning_effort", value(level.key)}};
-            if (effort == Reasoning::off) {
-                // A top-level "none" removes the keyword before the Inkling template sees it.
-                options.emplace("enable_thinking", value(false));
-            }
-            body.emplace("chat_template_kwargs", value(std::move(options)));
+            body.emplace("chat_template_kwargs", value(object{{"reasoning_effort", value(level.key)}}));
         }
     }
     return value(std::move(body)).serialize();
@@ -246,7 +243,10 @@ Conversation decode_conversation(const std::filesystem::path& path) {
     Conversation result;
     result.id = path.stem().wstring();
     const auto data = read_json(path, archive_limit);
-    const auto id = wide(string(field(data, "model")));
+    auto id = wide(string(field(data, "model")));
+    if (id == L"sai-big") {
+        id = L"sai-smart";
+    }
     const auto model = std::find_if(models.begin(), models.end(), [&](const Model& item) { return item.id == id; });
     if (model != models.end()) {
         result.model = static_cast<std::size_t>(model - models.begin());
@@ -311,14 +311,16 @@ class Transfer {
 public:
     explicit Transfer(HINTERNET handle) : handle(handle) {}
     ~Transfer();
-    bool attach();
+    bool begin(const wchar_t* headers, void* data, DWORD size, HANDLE stop);
     bool wait(BOOL queued, DWORD expected, HANDLE stop);
+    DWORD status_code() const;
 
     const HINTERNET handle;
     DWORD bytes = 0;
     DWORD error = ERROR_SUCCESS;
 
 private:
+    bool attach();
     static void CALLBACK notify(HINTERNET, DWORD_PTR context, DWORD status, void* data, DWORD size);
     Event ready_;
     Event closed_{true};
@@ -341,6 +343,25 @@ bool Transfer::attach() {
         WINHTTP_CALLBACK_FLAG_ALL_COMPLETIONS | WINHTTP_CALLBACK_FLAG_HANDLES,
         0) != WINHTTP_INVALID_STATUS_CALLBACK;
     return attached_;
+}
+
+bool Transfer::begin(const wchar_t* headers, void* data, DWORD size, HANDLE stop) {
+    DWORD redirect = WINHTTP_OPTION_REDIRECT_POLICY_NEVER;
+    if (!attach() || !WinHttpSetOption(handle, WINHTTP_OPTION_REDIRECT_POLICY, &redirect, sizeof(redirect))) {
+        error = GetLastError();
+        return false;
+    }
+    return wait(WinHttpSendRequest(handle, headers, headers ? static_cast<DWORD>(-1) : 0,
+            data, size, size, reinterpret_cast<DWORD_PTR>(this)), WINHTTP_CALLBACK_STATUS_SENDREQUEST_COMPLETE, stop)
+        && wait(WinHttpReceiveResponse(handle, nullptr), WINHTTP_CALLBACK_STATUS_HEADERS_AVAILABLE, stop);
+}
+
+DWORD Transfer::status_code() const {
+    DWORD status = 0;
+    DWORD size = sizeof(status);
+    WinHttpQueryHeaders(handle, WINHTTP_QUERY_STATUS_CODE | WINHTTP_QUERY_FLAG_NUMBER,
+        WINHTTP_HEADER_NAME_BY_INDEX, &status, &size, WINHTTP_NO_HEADER_INDEX);
+    return status;
 }
 
 Transfer::~Transfer() {
@@ -390,11 +411,9 @@ bool Transfer::wait(BOOL queued, DWORD expected, HANDLE stop) {
     return status_ == expected;
 }
 
-std::wstring error_message(DWORD error, const Model& model) {
+std::wstring error_message(DWORD error, unsigned short port) {
     if (error == ERROR_WINHTTP_CANNOT_CONNECT) {
-        return L"Cannot reach the local server on port " + std::to_wstring(model.port)
-            + (model.id == L"sai-max" ? L". Run Launch-Inkling.cmd max, then try again."
-                                      : L". Run Launch-Inkling.cmd, then try again.");
+        return L"The SAI backend stopped responding on port " + std::to_wstring(port) + L".";
     }
     if (error == ERROR_WINHTTP_TIMEOUT) {
         return L"The local model server timed out.";
@@ -414,45 +433,172 @@ std::wstring server_message(const value& json) {
     return wide(message.substr(0, 1000));
 }
 
-template <typename Publish>
-std::wstring complete(const Conversation& conversation, const Settings& settings, HANDLE stop, Publish publish) {
-    const auto& model = models.at(conversation.model);
-    auto body = encode_request(conversation, settings);
-    if (body.size() > archive_limit) {
-        return L"This conversation is too large to send. Start a new conversation.";
+struct Backend {
+    std::filesystem::path project;
+    unsigned short port;
+    std::wstring_view launch_arguments;
+};
+
+Backend backend_for(const Model& model) {
+    std::array<wchar_t, 32768> name{};
+    const auto length = GetModuleFileNameW(nullptr, name.data(), static_cast<DWORD>(name.size()));
+    std::filesystem::path project;
+    if (length && length < name.size()) {
+        auto folder = std::filesystem::path(std::wstring_view(name.data(), length)).parent_path();
+        for (; folder.is_absolute() && folder.has_relative_path(); folder = folder.parent_path()) {
+            std::error_code error;
+            if (std::filesystem::is_regular_file(folder / L"Launch-Inkling.cmd", error)
+                && std::filesystem::is_regular_file(folder / L"Sai-models.ini", error)) {
+                project = std::move(folder);
+                break;
+            }
+        }
     }
-    // Use fixed loopback endpoints, bypass proxies, and disallow redirects.
-    InternetHandle session(WinHttpOpen(L"SAI-LLM/1.0", WINHTTP_ACCESS_TYPE_NO_PROXY,
-        WINHTTP_NO_PROXY_NAME, WINHTTP_NO_PROXY_BYPASS, WINHTTP_FLAG_ASYNC));
-    if (!session.handle) {
-        return error_message(GetLastError(), model);
+    if (model.id == L"sai-max") {
+        return {std::move(project), model.port, L" max"};
     }
-    WinHttpSetTimeouts(session.handle, 4000, 4000, 10000, 300000);
-    InternetHandle connection(WinHttpConnect(session.handle, L"127.0.0.1", model.port, 0));
-    if (!connection.handle) {
-        return error_message(GetLastError(), model);
+    if (model.id == L"sai-smart") {
+        return {std::move(project), model.port, L" smart"};
+    }
+    return {std::move(project), model.port, {}};
+}
+
+using ProcessHandle = std::unique_ptr<void, decltype(&CloseHandle)>;
+
+std::wstring launch_backend(const Backend& backend, ProcessHandle& process) {
+    if (backend.project.empty()) {
+        return L"Could not find Launch-Inkling.cmd. Open SAI-LLM.exe from the SAI project or its build folder.";
+    }
+    std::array<wchar_t, MAX_PATH> system{};
+    const auto length = GetSystemDirectoryW(system.data(), static_cast<UINT>(system.size()));
+    if (!length || length >= system.size()) {
+        return L"Could not locate the Windows command processor.";
+    }
+    const auto executable = std::filesystem::path(system.data()) / L"cmd.exe";
+    std::wstring command = L"cmd.exe /d /c .\\Launch-Inkling.cmd";
+    command += backend.launch_arguments;
+    STARTUPINFOW startup{};
+    startup.cb = sizeof(startup);
+    PROCESS_INFORMATION information{};
+    if (!CreateProcessW(executable.c_str(), command.data(), nullptr, nullptr, FALSE, CREATE_NO_WINDOW,
+            nullptr, backend.project.c_str(), &startup, &information)) {
+        return L"Could not start the SAI backend (Windows error " + std::to_wstring(GetLastError()) + L").";
+    }
+    CloseHandle(information.hThread);
+    process.reset(information.hProcess);
+    return {};
+}
+
+struct BackendProbe {
+    DWORD error = ERROR_SUCCESS;
+    DWORD status = 0;
+    value properties;
+};
+
+BackendProbe probe_backend(HINTERNET connection, const std::wstring& path, HANDLE stop) {
+    Transfer transfer(WinHttpOpenRequest(connection, L"GET", path.c_str(), nullptr,
+        WINHTTP_NO_REFERER, WINHTTP_DEFAULT_ACCEPT_TYPES, 0));
+    BackendProbe result;
+    if (!transfer.begin(nullptr, nullptr, 0, stop)) {
+        result.error = transfer.error;
+        return result;
+    }
+    result.status = transfer.status_code();
+    if (!result.status) {
+        result.error = GetLastError();
+        return result;
     }
     std::array<char, 8192> buffer{};
-    Transfer transfer(WinHttpOpenRequest(connection.handle, L"POST", completions_path, nullptr,
-        WINHTTP_NO_REFERER, WINHTTP_DEFAULT_ACCEPT_TYPES, 0));
-    DWORD redirect = WINHTTP_OPTION_REDIRECT_POLICY_NEVER;
-    if (!transfer.attach() || !WinHttpSetOption(transfer.handle, WINHTTP_OPTION_REDIRECT_POLICY, &redirect, sizeof(redirect))) {
-        return error_message(GetLastError(), model);
+    std::string body;
+    while (body.size() < 1024 * 1024) {
+        if (!transfer.wait(WinHttpReadData(transfer.handle, buffer.data(), static_cast<DWORD>(buffer.size()), nullptr),
+                WINHTTP_CALLBACK_STATUS_READ_COMPLETE, stop)) {
+            result.error = transfer.error;
+            return result;
+        }
+        if (!transfer.bytes) {
+            parse_json(result.properties, body);
+            return result;
+        }
+        body.append(buffer.data(), transfer.bytes);
     }
+    result.error = ERROR_INVALID_DATA;
+    return result;
+}
+
+template <typename Publish>
+std::wstring wait_for_backend(HINTERNET connection, const Backend& backend, const Model& model,
+        HANDLE stop, HANDLE confirmed, Publish publish, std::string& alias) {
+    // The router loads the selected model for this endpoint without sending a chat message.
+    const auto properties_path = L"/props?model=" + std::wstring(model.id);
+    ProcessHandle process(nullptr, CloseHandle);
+    bool approved = false;
+    constexpr ULONGLONG startup_timeout = 5 * 60 * 1000;
+    auto deadline = GetTickCount64() + startup_timeout;
+    while (WaitForSingleObject(stop, 0) == WAIT_TIMEOUT && GetTickCount64() < deadline) {
+        const auto probe = probe_backend(connection, properties_path, stop);
+        if (probe.error == ERROR_WINHTTP_CANNOT_CONNECT) {
+            if (!approved) {
+                publish(BackendStatus::confirm_start);
+                const HANDLE events[]{stop, confirmed};
+                const auto decision = WaitForMultipleObjects(2, events, FALSE, INFINITE);
+                if (decision == WAIT_OBJECT_0) {
+                    return {};
+                }
+                if (decision != WAIT_OBJECT_0 + 1) {
+                    return L"Could not wait for startup confirmation.";
+                }
+                approved = true;
+                deadline = GetTickCount64() + startup_timeout;
+                publish(BackendStatus::loading);
+                continue;
+            }
+            if (!process) {
+                if (auto error = launch_backend(backend, process); !error.empty()) {
+                    return error;
+                }
+            }
+        } else if (probe.error) {
+            return error_message(probe.error, backend.port);
+        } else if (probe.status == 200) {
+            alias = string(field(probe.properties, "model_alias"));
+            if (alias == utf8(model.id) || (model.id == L"sai-smart" && alias == "bonsai-2-27b")) {
+                return {};
+            }
+            return L"The server on port " + std::to_wstring(backend.port) + L" is not serving " + std::wstring(model.id) + L".";
+        } else {
+            const auto message = server_message(probe.properties);
+            if (probe.status != 503 || message != L"Loading model") {
+                return L"SAI backend error " + std::to_wstring(probe.status)
+                    + (message.empty() ? L"." : L". " + message);
+            }
+        }
+        if (process && WaitForSingleObject(process.get(), 0) == WAIT_OBJECT_0) {
+            DWORD code = 0;
+            GetExitCodeProcess(process.get(), &code);
+            return L"The SAI backend exited during startup (code " + std::to_wstring(code)
+                + L"). Run Launch-Inkling.cmd" + std::wstring(backend.launch_arguments)
+                + L" from the SAI project folder to see the startup error.";
+        }
+        WaitForSingleObject(stop, 500);
+    }
+    return L"The SAI backend took too long to start.";
+}
+
+template <typename Publish>
+std::wstring complete(HINTERNET connection, unsigned short port, std::string& body, HANDLE stop, Publish publish) {
+    std::array<char, 8192> buffer{};
+    Transfer transfer(WinHttpOpenRequest(connection, L"POST", completions_path, nullptr,
+        WINHTTP_NO_REFERER, WINHTTP_DEFAULT_ACCEPT_TYPES, 0));
     constexpr auto headers = L"Content-Type: application/json\r\nAccept: text/event-stream\r\n";
     const auto length = static_cast<DWORD>(body.size());
-    if (!transfer.wait(WinHttpSendRequest(transfer.handle, headers, static_cast<DWORD>(-1),
-            body.data(), length, length, reinterpret_cast<DWORD_PTR>(&transfer)),
-            WINHTTP_CALLBACK_STATUS_SENDREQUEST_COMPLETE, stop)
-        || !transfer.wait(WinHttpReceiveResponse(transfer.handle, nullptr), WINHTTP_CALLBACK_STATUS_HEADERS_AVAILABLE, stop)) {
-        return error_message(transfer.error, model);
+    if (!transfer.begin(headers, body.data(), length, stop)) {
+        return error_message(transfer.error, port);
     }
 
-    DWORD http_status = 0;
-    DWORD status_size = sizeof(http_status);
-    if (!WinHttpQueryHeaders(transfer.handle, WINHTTP_QUERY_STATUS_CODE | WINHTTP_QUERY_FLAG_NUMBER,
-            WINHTTP_HEADER_NAME_BY_INDEX, &http_status, &status_size, WINHTTP_NO_HEADER_INDEX)) {
-        return error_message(GetLastError(), model);
+    const auto http_status = transfer.status_code();
+    if (!http_status) {
+        return error_message(GetLastError(), port);
     }
     wchar_t response_type[128]{};
     DWORD type_size = sizeof(response_type);
@@ -501,7 +647,7 @@ std::wstring complete(const Conversation& conversation, const Settings& settings
     while (!done && error.empty()) {
         if (!transfer.wait(WinHttpReadData(transfer.handle, buffer.data(), static_cast<DWORD>(buffer.size()), nullptr),
                 WINHTTP_CALLBACK_STATUS_READ_COMPLETE, stop)) {
-            return error_message(transfer.error, model);
+            return error_message(transfer.error, port);
         }
         if (!transfer.bytes) {
             break;
@@ -555,6 +701,35 @@ std::wstring complete(const Conversation& conversation, const Settings& settings
     return error;
 }
 
+template <typename SetBackendStatus, typename Publish>
+std::wstring run_request(const Conversation& conversation, const Settings& settings, HANDLE stop, HANDLE confirmed,
+        SetBackendStatus set_backend_status, Publish publish) {
+    const auto& model = models.at(conversation.model);
+    const auto backend = backend_for(model);
+    // Both the readiness checks and the chat request use the same fixed loopback endpoint.
+    InternetHandle session(WinHttpOpen(L"SAI-LLM/1.0", WINHTTP_ACCESS_TYPE_NO_PROXY,
+        WINHTTP_NO_PROXY_NAME, WINHTTP_NO_PROXY_BYPASS, WINHTTP_FLAG_ASYNC));
+    if (!session.handle) {
+        return error_message(GetLastError(), backend.port);
+    }
+    WinHttpSetTimeouts(session.handle, 4000, 4000, 10000, 300000);
+    InternetHandle connection(WinHttpConnect(session.handle, L"127.0.0.1", backend.port, 0));
+    if (!connection.handle) {
+        return error_message(GetLastError(), backend.port);
+    }
+    std::string alias;
+    auto error = wait_for_backend(connection.handle, backend, model, stop, confirmed, set_backend_status, alias);
+    if (!error.empty() || WaitForSingleObject(stop, 0) != WAIT_TIMEOUT) {
+        return error;
+    }
+    auto body = encode_request(conversation, settings, alias);
+    if (body.size() > archive_limit) {
+        return L"This conversation is too large to send. Start a new conversation.";
+    }
+    set_backend_status(BackendStatus::ready);
+    return complete(connection.handle, backend.port, body, stop, publish);
+}
+
 } // namespace
 
 std::wstring_view reasoning_label(Reasoning effort) {
@@ -565,11 +740,17 @@ bool supports_reasoning(const Model& model, Reasoning effort) {
     if (effort == Reasoning::preset || effort == Reasoning::off) {
         return true;
     }
-    return model.id == L"sai-flash" ? effort == Reasoning::on : effort != Reasoning::on;
+    if (model.id == L"sai-flash") {
+        return effort == Reasoning::on;
+    }
+    if (model.id == L"sai-smart") {
+        return effort == Reasoning::medium || effort == Reasoning::extra_high;
+    }
+    return effort != Reasoning::on;
 }
 
 bool supports_images(const Model& model) {
-    return model.id == L"sai-max";
+    return model.id == L"sai-smart" || model.id == L"sai-max";
 }
 
 std::wstring Conversation::title() const {
@@ -667,22 +848,27 @@ bool Archive::save_settings(const Settings& settings) const {
 
 struct Request::State {
     Event cancel{true};
+    Event confirmed;
     std::mutex mutex;
     Update update;
 };
 
-Request::Request(const Conversation& conversation, const Settings& settings) : state_(std::make_shared<State>()),
-    worker_([state = state_, conversation, settings] {
+Request::Request(Conversation conversation, const Settings& settings) : state_(std::make_shared<State>()),
+    worker_([state = state_, conversation = std::move(conversation), settings] {
         std::wstring error;
         try {
-            if (!state->cancel.handle) {
+            if (!state->cancel.handle || !state->confirmed.handle) {
                 error = L"Could not initialize the local request.";
             } else {
-                error = complete(conversation, settings, state->cancel.handle, [&](std::wstring text, bool thinking) {
-                    std::lock_guard lock(state->mutex);
-                    state->update.text += text;
-                    state->update.thinking = thinking;
-                });
+                error = run_request(conversation, settings, state->cancel.handle, state->confirmed.handle,
+                    [&](BackendStatus status) {
+                        std::lock_guard lock(state->mutex);
+                        state->update.backend = status;
+                    }, [&](std::wstring text, bool thinking) {
+                        std::lock_guard lock(state->mutex);
+                        state->update.text += text;
+                        state->update.thinking = thinking;
+                    });
             }
         } catch (const std::exception&) {
             error = L"The local request could not be completed.";
@@ -697,6 +883,10 @@ Request::Request(const Conversation& conversation, const Settings& settings) : s
 
 Request::~Request() {
     stop();
+}
+
+void Request::start_backend() const {
+    SetEvent(state_->confirmed.handle);
 }
 
 void Request::stop() const {

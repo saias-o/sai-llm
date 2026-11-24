@@ -1,0 +1,39 @@
+version = 1
+
+[*]
+ctx-size = 65536
+parallel = 1
+cache-ram = 0
+ctx-checkpoints = 2
+device = none
+n-gpu-layers = 0
+load-mode = mmap
+fit = off
+no-warmup = true
+repack = true
+threads = 12
+threads-batch = 12
+threads-http = 2
+batch-size = 128
+ubatch-size = 128
+cache-type-k = q4_0
+cache-type-v = q4_0
+temp = 0
+
+[sai-flash]
+model = models/LFM3-1.7B-Q4_K_M.gguf
+ctx-size = 262144
+device = Vulkan0
+n-gpu-layers = 99
+threads = 8
+threads-batch = 12
+batch-size = 512
+ubatch-size = 128
+flash-attn = on
+cache-type-k = q8_0
+cache-type-v = q8_0
+jinja = true
+reasoning = off
+temp = 0.1
+top-k = 50
+repeat-penalty = 1.1

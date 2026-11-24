@@ -11,16 +11,13 @@ namespace {
 
 // Estimates include engine and context overhead plus host headroom.
 // Dedicated VRAM is considered per adapter, since most engines do not pool it.
-constexpr Profile max_profile{L"sai-max", L"1,048,576", 0, 90, 24};
-constexpr Profile big_profile{L"sai-big", L"200,000", 14, 12, 8};
-constexpr Profile smart_profile{L"sai-smart", L"65,536", 11, 10, 7};
+constexpr Profile max_profile{L"sai-max", L"500,000", 0, 10, 32};
+constexpr Profile smart_profile{L"sai-smart", L"65,536", 0, 12, 16};
 constexpr Profile flash_profile{L"sai-flash", L"262,144", 6, 4, 5};
-constexpr const Profile* profiles[]{&max_profile, &big_profile, &smart_profile, &flash_profile};
+constexpr const Profile* profiles[]{&max_profile, &smart_profile, &flash_profile};
 constexpr auto ignore_case = std::regex_constants::icase;
 
-bool native_inkling_gpu(const Adapter& card) {
-    // The full 1M window is documented on GB200. The other listed adapters
-    // are supported or comparable candidates with sufficient dedicated VRAM.
+bool datacenter_cuda_gpu(const Adapter& card) {
     static const std::wregex families(LR"(\b(?:G?B200|G?B300|H200)\b|\bRTX PRO 6000.*Blackwell\b)", ignore_case);
     return card.vendor == Vendor::nvidia && std::regex_search(card.name, families);
 }
@@ -31,7 +28,7 @@ bool supports_offload(const Adapter& card) {
     static const std::wregex intel(LR"(\bArc\b)", ignore_case);
     switch (card.vendor) {
         case Vendor::nvidia:
-            return card.cuda_major >= 7 || std::regex_search(card.name, nvidia) || native_inkling_gpu(card);
+            return card.cuda_major >= 7 || std::regex_search(card.name, nvidia) || datacenter_cuda_gpu(card);
         case Vendor::amd:
             return std::regex_search(card.name, amd);
         case Vendor::intel:
@@ -45,7 +42,7 @@ bool faster_gpu(const Adapter& card) {
     static const std::wregex nvidia(LR"(\bRTX\s+(?:[345]\d{3}|A[2-9]\d{3}|PRO)\b)", ignore_case);
     static const std::wregex amd(LR"(\b(?:RX\s*|W)([6-9]\d{3})[MS]?\b)", ignore_case);
     if (card.vendor == Vendor::nvidia) {
-        return card.cuda_major >= 8 || native_inkling_gpu(card) || std::regex_search(card.name, nvidia);
+        return card.cuda_major >= 8 || datacenter_cuda_gpu(card) || std::regex_search(card.name, nvidia);
     }
     if (card.vendor == Vendor::amd) {
         std::wsmatch model;
@@ -76,7 +73,8 @@ bool faster_flash_cpu(const Hardware& pc) {
 }
 
 std::optional<Choice> evaluate(const Profile& profile, const Hardware& pc) {
-    const bool native = &profile == &max_profile;
+    const bool max = &profile == &max_profile;
+    const bool smart = &profile == &smart_profile;
     const bool flash = &profile == &flash_profile;
     const Adapter* best = nullptr;
     bool best_fast = false;
@@ -84,7 +82,7 @@ std::optional<Choice> evaluate(const Profile& profile, const Hardware& pc) {
     if (pc.ram_gib >= profile.gpu_host_ram_gib) {
         for (const auto& card : pc.adapters) {
             if (card.dedicated_gib < profile.gpu_vram_gib - 0.125
-                || !(native ? native_inkling_gpu(card) : supports_offload(card))) {
+                || !supports_offload(card) || ((max || smart) && card.vendor != Vendor::nvidia)) {
                 continue;
             }
             const bool fast = faster_gpu(card);
@@ -96,9 +94,9 @@ std::optional<Choice> evaluate(const Profile& profile, const Hardware& pc) {
     }
     if (best) {
         return Choice{
-            &profile, native ? L"Native vLLM" : L"llama.cpp GPU offload",
+            &profile, smart ? L"Bonsai 2 27B (CUDA)" : max ? L"llama.cpp CUDA offload" : L"llama.cpp GPU offload",
             best->name + L" has " + gib(best->dedicated_gib) + L" of dedicated VRAM.",
-            flash || best_fast,
+            !max && (flash || best_fast),
         };
     }
     if (flash && known_hybrid_flash(pc)) {
@@ -108,19 +106,12 @@ std::optional<Choice> evaluate(const Profile& profile, const Hardware& pc) {
             true,
         };
     }
-    if (!native && pc.cpu_compatible && pc.ram_gib >= profile.cpu_ram_gib) {
+    if (profile.cpu_ram_gib > 0 && pc.cpu_compatible && pc.ram_gib >= profile.cpu_ram_gib) {
         const bool metal = flash && pc.apple_silicon;
         return Choice{
             &profile, metal ? L"Metal on unified memory" : L"CPU",
             gib(pc.ram_gib) + L" of system memory clears this profile’s context threshold.",
             flash && (metal || faster_flash_cpu(pc)),
-        };
-    }
-    if (&profile == &smart_profile && pc.avx2 && pc.physical_cores >= 4
-        && pc.ram_gib >= 7 && pc.commit_gib >= 10) {
-        return Choice{
-            &profile, L"CPU with memory mapping",
-            L"The weights can be mapped from disk. Expect slow generation when they need to be read from storage.",
         };
     }
     return std::nullopt;

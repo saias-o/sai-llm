@@ -22,18 +22,24 @@ inline constexpr auto hermes_windows_install =
 
 inline constexpr auto hermes_providers = LR"(providers:
   sai-router:
-    name: SAI Router
-    api: http://127.0.0.1:8080/v1
+    name: SAI Flash
+    api: http://127.0.0.1:8082/v1
     transport: chat_completions
     discover_models: false
     default_model: sai-flash
     models:
       sai-flash:
         context_length: 262144
+  sai-bonsai:
+    name: SAI Smart (Bonsai 2 27B)
+    api: http://127.0.0.1:8080/v1
+    transport: chat_completions
+    discover_models: false
+    default_model: sai-smart
+    models:
       sai-smart:
         context_length: 65536
-      sai-big:
-        context_length: 200000
+        supports_vision: true
   sai-native:
     name: SAI Max
     api: http://127.0.0.1:8081/v1
@@ -42,7 +48,8 @@ inline constexpr auto hermes_providers = LR"(providers:
     default_model: sai-max
     models:
       sai-max:
-        context_length: 1048576
+        context_length: 500000
+        supports_vision: true
 )";
 
 inline constexpr std::array<GuideStep, 5> hermes_guide{{
@@ -58,50 +65,54 @@ inline constexpr std::array<GuideStep, 5> hermes_guide{{
     },
     {
         L"Get model files", L"Get the SAI models you want to use",
-        L"Open SAI Downloads for the exact files. For the Windows router, extract the Vulkan runtime "
-        L"and put the model weights and chat templates in these locations.",
+        L"Open SAI Downloads for the exact files. Use the PrismML runtime for Bonsai, "
+        L"the Vulkan runtime for Flash, and the Unsloth CUDA runtime for Max.",
         LR"(%LOCALAPPDATA%\Inkling2Mini
   unsloth-vulkan\llama-server.exe
+  unsloth-cuda\llama-server.exe
   models\LFM3-1.7B-Q4_K_M.gguf           sai-flash
-  models\Inkling-2-Mini-UD-IQ1_S.gguf   sai-smart and sai-big
+  models\Inkling-2-Mini-UD-Q4_K_XL.gguf sai-max
+  models\mmproj-F16.gguf               sai-max images
   Inkling-2-Mini-direct.jinja
-  Inkling-2-Mini-reasoning.jinja)",
-        L"Copy both templates from the project's templates folder. Check the Vulkan device names in "
-        L"Sai-models.ini using llama-server.exe --list-devices. The download guide lists single-GPU "
-        L"and CPU-only settings. SAI Max downloads its own checkpoint when Compose starts.",
+  Inkling-2-Mini-reasoning.jinja
+
+%LOCALAPPDATA%\Bonsai2
+  bin\llama-server.exe
+  models\Ternary-Bonsai-2-27B-PTQ1_0.gguf
+  models\Ternary-Bonsai-2-27B-mmproj-Q8_0.gguf)",
+        L"Set SAI_BONSAI_HOME if Bonsai is installed in another folder. Check the Flash Vulkan "
+        L"device names in Sai-models.ini using llama-server.exe --list-devices.",
         L"Copy install folder", LR"(%LOCALAPPDATA%\Inkling2Mini)",
         L"SAI downloads", L"https://github.com/saias-o/sai-llm#downloads",
     },
     {
         L"Start SAI", L"Start the local model server",
-        L"Open PowerShell in the SAI project folder. Use the first command for Flash, Smart and Big. "
-        L"For Max, use the second command on a compatible Docker GPU host. Run each server in its own terminal.",
-        LR"(.\Launch-Inkling.cmd          http://127.0.0.1:8080/v1
-.\Launch-Inkling.cmd max      http://127.0.0.1:8081/v1)",
+        L"Open PowerShell in the SAI project folder and run the command for your model.",
+        LR"(.\Launch-Inkling.cmd smart    http://127.0.0.1:8080/v1
+.\Launch-Inkling.cmd max      http://127.0.0.1:8081/v1
+.\Launch-Inkling.cmd          http://127.0.0.1:8082/v1)",
         L"Keep the server terminal open. To check a server, open its base URL with /models appended. "
         L"For example, http://127.0.0.1:8080/v1/models should return a JSON model list.",
-        L"Copy router command", LR"(.\Launch-Inkling.cmd)",
+        L"Copy Smart command", LR"(.\Launch-Inkling.cmd smart)",
         L"SAI launch guide", L"https://github.com/saias-o/sai-llm#run-the-models",
     },
     {
         L"Add providers", L"Add the SAI providers in Hermes",
         L"Run the command below to open Hermes config.yaml. Use Copy provider YAML, paste the block as a "
-        L"top-level setting, and save. If providers already has entries, add sai-router and sai-native "
-        L"under it and keep one providers key. If it says providers: {}, replace that line with the block.",
+        L"top-level setting, and save. If providers already has entries, update sai-router and copy "
+        L"sai-bonsai and sai-native under the existing providers key.",
         L"hermes config edit",
-        L"SAI Router lists sai-flash, sai-smart and sai-big on port 8080. SAI Max lists sai-max on "
-        L"port 8081. The copied YAML includes the context limits for all four models and uses local, "
-        L"keyless connections.",
+        L"Smart uses port 8080, Max uses 8081, and Flash uses 8082. The copied YAML includes "
+        L"the model context limits and uses local, keyless connections.",
         L"Copy provider YAML", hermes_providers,
         L"Provider docs", L"https://hermes-agent.nousresearch.com/docs/integrations/providers#named-custom-providers",
     },
     {
         L"Choose a model", L"Select a SAI model and start chatting",
-        L"Run hermes model, choose SAI Router or SAI Max, then select an installed model. Run hermes chat "
+        L"Run hermes model, choose the SAI provider for your installed model, then run hermes chat "
         L"and send a short message. To switch in an active chat, use one of these commands.",
         LR"(/model custom:sai-router:sai-flash
-/model custom:sai-router:sai-smart
-/model custom:sai-router:sai-big
+/model custom:sai-bonsai:sai-smart
 /model custom:sai-native:sai-max)",
         L"Hermes Desktop uses the same configuration. Open or restart it and choose a SAI model from "
         L"the chat model menu. If a model cannot connect, check that its server is running and the "

@@ -12,6 +12,7 @@
 #include <cwchar>
 #include <exception>
 #include <mutex>
+#include <optional>
 #include <utility>
 
 namespace sai::chat {
@@ -33,6 +34,7 @@ constexpr int save_options_id = 210;
 constexpr int cancel_options_id = 211;
 constexpr UINT files_ready = WM_APP + 2;
 constexpr auto no_selection = static_cast<std::size_t>(-1);
+constexpr auto attachment_glyph = L"\uE723";
 
 constexpr COLORREF black = RGB(8, 8, 8);
 constexpr COLORREF panel = RGB(13, 13, 13);
@@ -127,6 +129,7 @@ private:
     void save_options();
 
     void send();
+    void commit_pending_message();
     void update_reply();
     void render_history();
     void append(std::wstring_view value, COLORREF color, bool bold = false);
@@ -158,6 +161,7 @@ private:
     HMODULE rich_edit_ = nullptr;
     HFONT font_ = nullptr;
     HFONT heading_ = nullptr;
+    HFONT attachment_font_ = nullptr;
     HBRUSH background_brush_ = nullptr;
     HBRUSH panel_brush_ = nullptr;
     HBRUSH field_brush_ = nullptr;
@@ -168,6 +172,7 @@ private:
     std::size_t selected_ = no_selection;
     std::size_t active_ = no_selection;
     std::unique_ptr<Request> request_;
+    std::optional<std::wstring> pending_prompt_;
     std::wstring partial_;
     bool failed_ = false;
     bool history_saved_ = true;
@@ -191,6 +196,7 @@ Panel::~Panel() {
     request_.reset();
     DeleteObject(font_);
     DeleteObject(heading_);
+    DeleteObject(attachment_font_);
     DeleteObject(background_brush_);
     DeleteObject(panel_brush_);
     DeleteObject(field_brush_);
@@ -257,7 +263,7 @@ bool Panel::initialize() {
     entry_ = control(L"EDIT", L"", WS_TABSTOP | WS_VSCROLL | ES_MULTILINE | ES_AUTOVSCROLL | ES_WANTRETURN);
     send_ = control(L"BUTTON", L"Send", button_style, send_id);
     status_ = control(L"STATIC", L"", SS_NOPREFIX);
-    attach_ = control(L"BUTTON", L"Attachments", button_style, attach_id);
+    attach_ = control(L"BUTTON", L"Attach files", button_style, attach_id);
     attachments_ = control(L"COMBOBOX", L"", combo_style);
     remove_attachment_ = control(L"BUTTON", L"Remove", button_style, remove_attachment_id);
     options_ = control(L"BUTTON", L"Options", button_style, options_id);
@@ -284,7 +290,8 @@ bool Panel::initialize() {
     SendMessageW(options_entry_, EM_LIMITTEXT, 65536, 0);
     SendMessageW(entry_, EM_SETMARGINS, EC_LEFTMARGIN | EC_RIGHTMARGIN, MAKELPARAM(px(8), px(8)));
     for (const auto& model : models) {
-        SendMessageW(model_, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(model.id.data()));
+        const auto label = model.id == L"sai-smart" ? L"sai-smart (Bonsai 2 27B)" : model.id.data();
+        SendMessageW(model_, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(label));
     }
     settings_ = archive_.load_settings();
     conversations_ = archive_.load();
@@ -298,9 +305,9 @@ bool Panel::initialize() {
 }
 
 void Panel::update_font() {
-    const auto create = [&](int size, int weight) {
+    const auto create = [&](int size, int weight, const wchar_t* family = L"Segoe UI") {
         return CreateFontW(-px(size), 0, 0, 0, weight, FALSE, FALSE, FALSE, DEFAULT_CHARSET,
-            OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY, DEFAULT_PITCH, L"Segoe UI");
+            OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY, DEFAULT_PITCH, family);
     };
     const auto body = create(14, FW_NORMAL);
     const auto heading = create(16, FW_SEMIBOLD);
@@ -317,6 +324,9 @@ void Panel::update_font() {
     } else {
         DeleteObject(body);
         DeleteObject(heading);
+    }
+    if (const auto icons = create(17, FW_NORMAL, L"Segoe MDL2 Assets")) {
+        DeleteObject(std::exchange(attachment_font_, icons));
     }
     SendMessageW(list_, LB_SETITEMHEIGHT, 0, px(34));
     for (const auto menu : {model_, reasoning_, attachments_}) {
@@ -352,6 +362,8 @@ void Panel::layout() {
     const int composer = std::max(px(202), static_cast<int>(rect.bottom) - px(107));
     const bool pending = selected_ != no_selection && !conversations_[selected_].draft_attachments.empty();
     const int attachment_top = composer - (pending ? px(42) : 0);
+    const int attachment_button_width = px(pending ? 50 : 36);
+    const int status_offset = attachment_button_width + px(10);
     MoveWindow(title_, px(17), px(18), px(155), px(23), TRUE);
     MoveWindow(new_, px(17), px(49), px(155), px(32), TRUE);
     MoveWindow(list_, px(12), px(92), px(165), std::max(px(34), static_cast<int>(rect.bottom) - px(104)), TRUE);
@@ -365,8 +377,8 @@ void Panel::layout() {
     MoveWindow(remove_attachment_, left + width - px(72), attachment_top, px(72), px(31), TRUE);
     MoveWindow(entry_, left, composer, width - px(82), px(60), TRUE);
     MoveWindow(send_, left + width - px(72), composer, px(72), px(60), TRUE);
-    MoveWindow(attach_, left, composer + px(66), px(112), px(31), TRUE);
-    MoveWindow(status_, left + px(122), composer + px(68), width - px(122), px(37), TRUE);
+    MoveWindow(attach_, left, composer + px(66), attachment_button_width, px(31), TRUE);
+    MoveWindow(status_, left + status_offset, composer + px(68), width - status_offset, px(37), TRUE);
     InvalidateRect(window_, nullptr, FALSE);
 }
 
@@ -391,8 +403,12 @@ void Panel::paint_item(const DRAWITEMSTRUCT& item) const {
     if (button || focused) {
         rectangle(item.hDC, item.rcItem, focused ? red : edge, true);
     }
+    const bool attachment_button = button && item.CtlID == attach_id;
+    const auto attached = attachment_button && selected_ != no_selection ? conversations_[selected_].draft_attachments.size() : 0;
     std::wstring label;
-    if (button) {
+    if (attachment_button) {
+        label = attachment_glyph;
+    } else if (button) {
         label = window_text(item.hwndItem);
     } else if (item.itemID != static_cast<UINT>(-1)) {
         const bool list = item.CtlType == ODT_LISTBOX;
@@ -408,11 +424,21 @@ void Panel::paint_item(const DRAWITEMSTRUCT& item) const {
         bounds.left += px(8);
         bounds.right -= px(8);
     }
+    if (attached) {
+        bounds.right -= px(16);
+    }
     SetBkMode(item.hDC, TRANSPARENT);
     SetTextColor(item.hDC, disabled ? muted : (primary || active ? green : text));
-    const auto previous = SelectObject(item.hDC, font_);
+    const auto previous = SelectObject(item.hDC, attachment_button ? attachment_font_ : font_);
     DrawTextW(item.hDC, label.c_str(), static_cast<int>(label.size()), &bounds,
         (button ? DT_CENTER : DT_LEFT) | DT_NOPREFIX | DT_SINGLELINE | DT_VCENTER | DT_END_ELLIPSIS);
+    if (attached) {
+        SelectObject(item.hDC, font_);
+        const auto count = std::to_wstring(attached);
+        RECT count_bounds{bounds.right - px(2), bounds.top, item.rcItem.right - px(4), bounds.bottom};
+        DrawTextW(item.hDC, count.c_str(), static_cast<int>(count.size()), &count_bounds,
+            DT_CENTER | DT_SINGLELINE | DT_VCENTER);
+    }
     SelectObject(item.hDC, previous);
 }
 
@@ -566,7 +592,8 @@ void Panel::show_conversation(std::size_t index) {
     render_history();
     update_controls();
     if (request_) {
-        set_status(index == active_ ? L"Waiting for the local model\u2026" : L"Reply running in another conversation.");
+        set_status(index != active_ ? L"Reply running in another conversation."
+            : pending_prompt_ ? L"Loading the local model\u2026" : L"Waiting for the reply\u2026");
     } else if (importing_) {
         set_status(index == attachment_target_ ? L"Preparing attachments\u2026" : L"Preparing attachments in another conversation.");
     } else {
@@ -609,7 +636,7 @@ void Panel::choose_model() {
         fill_reasoning();
         persist(conversation);
         if (has_pending_image() && !supports_images(models[conversation.model])) {
-            set_status(L"Remove the pending image or select sai-max.", true);
+            set_status(L"Remove the pending image or select sai-smart or sai-max.", true);
         }
     }
 }
@@ -650,6 +677,7 @@ void Panel::update_controls() {
     EnableWindow(remove_attachment_, ready);
     EnableWindow(options_, ready);
     EnableWindow(send_, !importing_);
+    SendMessageW(entry_, EM_SETREADONLY, pending_prompt_.has_value() && selected_ == active_, 0);
     SetWindowTextW(send_, request_ ? L"Stop" : L"Send");
 }
 
@@ -766,7 +794,7 @@ void Panel::refresh_attachments() {
     if (!pending.empty()) {
         SendMessageW(attachments_, CB_SETCURSEL, pending.size() - 1, 0);
     }
-    SetWindowTextW(attach_, pending.empty() ? L"Attachments" : (L"Attachments (" + std::to_wstring(pending.size()) + L")").c_str());
+    SetWindowTextW(attach_, pending.empty() ? L"Attach files" : (L"Attach files (" + std::to_wstring(pending.size()) + L" attached)").c_str());
     const int show = !options_open_ && !pending.empty() ? SW_SHOW : SW_HIDE;
     ShowWindow(attachments_, show);
     ShowWindow(remove_attachment_, show);
@@ -859,7 +887,7 @@ void Panel::send() {
     if (request_ || importing_ || options_open_ || selected_ == no_selection) {
         return;
     }
-    auto& conversation = conversations_[selected_];
+    const auto& conversation = conversations_[selected_];
     auto prompt = window_text(entry_);
     const auto first = prompt.find_first_not_of(L" \t\r\n");
     if (first == std::wstring::npos && conversation.draft_attachments.empty()) {
@@ -867,35 +895,69 @@ void Panel::send() {
         return;
     }
     if (has_pending_image() && !supports_images(models[conversation.model])) {
-        set_status(L"Remove the pending image or select sai-max.", true);
+        set_status(L"Remove the pending image or select sai-smart or sai-max.", true);
         return;
     }
     prompt = first == std::wstring::npos ? std::wstring{} : prompt.substr(first, prompt.find_last_not_of(L" \t\r\n") - first + 1);
-    conversation.messages.push_back({true, std::move(prompt), std::exchange(conversation.draft_attachments, {})});
-    conversation.draft.clear();
-    SetWindowTextW(entry_, L"");
-    refresh_attachments();
-    if (conversation.messages.size() == 1) {
-        refresh_history();
-    }
-    append_message(conversation.messages.back());
-    SendMessageW(transcript_, EM_SCROLLCARET, 0, 0);
-    persist(conversation);
-    request_ = std::make_unique<Request>(conversation, settings_);
+    auto outgoing = conversation;
+    outgoing.messages.push_back({true, prompt, std::move(outgoing.draft_attachments)});
+    outgoing.draft.clear();
     if (!SetTimer(window_, refresh_timer, 50, nullptr)) {
-        request_.reset();
         set_status(L"Could not start the reply view.", true);
         return;
     }
+    try {
+        request_ = std::make_unique<Request>(std::move(outgoing), settings_);
+    } catch (const std::exception&) {
+        KillTimer(window_, refresh_timer);
+        throw;
+    }
+    pending_prompt_ = std::move(prompt);
     active_ = selected_;
     update_controls();
-    set_status(L"Waiting for the local model\u2026");
+    set_status(L"Loading the local model\u2026");
     SetFocus(entry_);
+}
+
+void Panel::commit_pending_message() {
+    auto& conversation = conversations_[active_];
+    conversation.messages.push_back({true, std::move(*pending_prompt_), std::exchange(conversation.draft_attachments, {})});
+    pending_prompt_.reset();
+    conversation.draft.clear();
+    update_controls();
+    if (conversation.messages.size() == 1) {
+        refresh_history();
+    }
+    if (selected_ == active_) {
+        SetWindowTextW(entry_, L"");
+        refresh_attachments();
+        append_message(conversation.messages.back());
+        SendMessageW(transcript_, EM_SCROLLCARET, 0, 0);
+    }
+    persist(conversation);
 }
 
 void Panel::update_reply() {
     auto update = request_->take();
     const bool visible_conversation = selected_ == active_;
+    if (update.backend == BackendStatus::confirm_start && !update.finished && IsWindowEnabled(send_)) {
+        const auto model = models[conversations_[active_].model].id;
+        const auto question = L"Start the SAI backend for " + std::wstring(model)
+            + L"? Your message will be sent as soon as the model is ready.";
+        if (MessageBoxW(GetAncestor(window_, GA_ROOT), question.c_str(), L"Start SAI backend",
+                MB_YESNO | MB_ICONQUESTION | MB_DEFBUTTON2) == IDYES) {
+            request_->start_backend();
+        } else {
+            request_->stop();
+        }
+    } else if (update.backend == BackendStatus::loading && visible_conversation) {
+        set_status(L"Starting the SAI backend and loading the model\u2026");
+    } else if (update.backend == BackendStatus::ready && pending_prompt_) {
+        commit_pending_message();
+        if (visible_conversation) {
+            set_status(L"Backend ready. Waiting for the reply\u2026");
+        }
+    }
     if (!update.text.empty()) {
         if (visible_conversation) {
             SCROLLINFO scroll{};
@@ -934,12 +996,16 @@ void Panel::update_reply() {
         }
         persist(conversation);
     }
+    const bool draft_kept = pending_prompt_.has_value();
+    pending_prompt_.reset();
     active_ = no_selection;
     KillTimer(window_, refresh_timer);
     request_.reset();
     update_controls();
     if (!update.error.empty()) {
         set_status(update.error, true);
+    } else if (update.stopped && draft_kept) {
+        set_status(L"Canceled. Your message is still in the draft.");
     } else if (!history_saved_) {
         set_status(L"Conversation history could not be saved to disk.", true);
     } else if (update.stopped) {

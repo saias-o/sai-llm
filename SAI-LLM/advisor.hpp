@@ -23,7 +23,6 @@ struct Hardware {
     std::wstring cpu;
     unsigned physical_cores = 0;
     double ram_gib = 0;
-    double commit_gib = 0;
     bool avx2 = false;
     bool cpu_compatible = false;
     bool apple_silicon = false;

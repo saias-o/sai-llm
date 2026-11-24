@@ -142,7 +142,6 @@ Hardware scan_hardware() {
     hardware.cpu = cpu_name();
     hardware.physical_cores = physical_cores();
     hardware.ram_gib = memory.ullTotalPhys / bytes_per_gib;
-    hardware.commit_gib = memory.ullTotalPageFile / bytes_per_gib;
     hardware.avx2 = IsProcessorFeaturePresent(avx2_feature);
     hardware.cpu_compatible = IsProcessorFeaturePresent(sse42_feature) || IsProcessorFeaturePresent(arm64_feature);
     hardware.adapters = dxgi_adapters();

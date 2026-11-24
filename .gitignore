@@ -4,6 +4,7 @@
 **/unsloth-vulkan/
 **/__pycache__/
 **/PDFium-licenses/
+/Sai-models.local.ini
 
 *.gguf
 *.gguf_file
