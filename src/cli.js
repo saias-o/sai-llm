@@ -14,7 +14,7 @@ Setup
                      --profiles flash,smart,pro   choose profiles
                      --yes                        accept the defaults and licenses
                      --check                      report only, change nothing
-                     --no-tools --no-shortcut --no-path   skip those steps
+                     --no-tools --no-path --no-shortcut --no-bench   skip those steps
   connect [tool...]  Point tools at SAIAS: hermes, opencode, codex, claude (default: detected ones)
   update             Install newer models from the latest catalog (--check, --yes)
   rollback           Return to the models installed before the last update
@@ -26,6 +26,14 @@ Run
   stop               Stop the hub and its model servers
   status             Show the installation and the hub state (--json)
   claude [options]   Run Claude Code on a SAIAS model (--profile smart|pro|flash)
+
+Measure
+  bench              Measure load time, prompt and generation speed of each profile
+                     --profile pro   one profile only     --cold   reload loaded models
+  eval               Agent evaluation: tool calling, coding, long context, instructions
+                     --profile pro   --suite tools,code   --task needle   --repeat 3
+                     --reasoning medium   --list   --out report.json
+                     --endpoint URL --model NAME [--context N]   evaluate any OpenAI-compatible server
 
 Environment
   SAIAS_HOME         data folder (default: %LOCALAPPDATA%\\SAIAS on Windows)
@@ -69,6 +77,9 @@ async function main() {
       }
       if (!opts.noPath) await require('./integrations/path').add({ yes: opts.yes });
       if (!opts.noShortcut) require('./integrations/shortcut').create();
+      if (!opts.noBench && (await ui.confirm('Measure how fast each model runs on this PC now? It loads each model in turn (a few minutes).', true, opts.yes))) {
+        await require('./bench').run({});
+      }
       ui.step('Done');
       ui.info('Start SAIAS: Start-SAIAS.cmd, the SAIAS desktop shortcut, or "saias start --open".');
       ui.info('Llama Chat: http://127.0.0.1:8090/   API for Hermes and other tools: http://127.0.0.1:8090/v1');
@@ -78,6 +89,8 @@ async function main() {
     case 'claude': return require('./integrations/claude').launch(rest);
     case 'start': return require('./hub').start({ open: Boolean(opts.open) });
     case 'stop': return stop();
+    case 'bench': return require('./bench').run(opts);
+    case 'eval': return require('./eval').run(opts);
     case 'update': return manage.update(opts);
     case 'rollback': return manage.rollback();
     case 'adopt': return manage.adopt(opts._[0], opts);

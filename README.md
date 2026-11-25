@@ -13,9 +13,13 @@ Stop comparing benchmarks, searching for models, choosing quantizations and conf
 
 Tools such as Ollama and LM Studio make local models easier to use. SAIAS takes model management off the user's plate entirely: you never need to know what Qwen, Gemma, parameter counts or quantization are. You pick a profile, `saias-flash`, `saias-smart` or `saias-pro`, and SAIAS supplies the right model and runtime for your PC.
 
-This repository, saias-llm, contains the installer, the three model profiles, the SAIAS hub with Llama Chat and web search, and a native C++ hardware advisor.
+This repository, saias-llm, contains the installer, the model catalog, the SAIAS hub with Llama Chat and web search, the agent evaluation suite and the SAIAS Windows app.
 
 ## Quick start (Windows)
+
+**Installer.** Run `SAIAS-Setup-<version>.exe`. It installs SAIAS for your user account (no administrator rights), then opens a console that picks, downloads and verifies the models for your PC. SAIAS then lives in the notification area.
+
+**From the source.**
 
 1. Clone this repository, or download it as a ZIP and extract it.
 2. Run `Install-SAIAS.cmd`. It installs a private copy of Node.js if needed, checks your hardware, recommends profiles, downloads and verifies the runtimes and models, sets up web search, and connects Hermes Agent and the coding tools it finds (OpenCode, Codex, Claude Code). It can also put `saias` on your PATH and create a **SAIAS** desktop shortcut. Running it again is safe: verified files are kept and interrupted downloads resume.
@@ -99,7 +103,30 @@ Other OpenAI-compatible tools (Continue, Cline, Aider, ...) work with the base U
 
 `saias install` installs Hermes Agent with the official installer if it is missing. It adds a `saias` provider for `http://127.0.0.1:8090/v1` and the `saias-web` MCP server to the Hermes `config.yaml`, after saving a `.bak-saias-*` copy, and can make SAIAS the default model. Switch models in a chat with `/model custom:saias:saias-flash`, `/model custom:saias:saias-smart` or `/model custom:saias:saias-pro`.
 
-## Native app
+## Evaluation and benchmarks
+
+These commands load models, so they take a while; nothing runs them automatically except the optional speed measurement at the end of `saias install`.
+
+**`saias bench`** measures, for each installed profile, the load time, the prompt reading speed (512, 4,096 and 16,384 tokens) and the generation speed (256 tokens), from llama-server's own timings. Results are saved in the installation state, shown by `saias status` with a rating (`fast` from 20 tokens/s, `usable` from 8, otherwise `slow`), and turned into advice such as the best interactive profile for this PC.
+
+**`saias eval`** runs an agent-focused evaluation and saves a JSON report:
+
+| Suite | What it checks |
+| --- | --- |
+| `tools` | Calling the right tool with valid, typed arguments; not calling tools when none is needed; parallel calls; using tool results; a multi-step file exploration with a simulated project. |
+| `code` | Writing or fixing JavaScript functions, checked by hidden tests that run in a separate Node.js process with the permission model and a time limit. |
+| `context` | Finding and combining facts hidden at different depths of 4k to 128k-token inputs; sizes beyond the model's context are skipped. |
+| `instruct` | Strict JSON output, exact list formats and system prompt rules. |
+
+`--endpoint URL --model NAME` evaluates any OpenAI-compatible server, which is how a candidate model is compared with the current profile before it enters the catalog. `--repeat 3` averages runs, `--reasoning medium` sets the reasoning level, `--list` shows the tasks.
+
+`npm test` checks the suites, the benchmark and the core logic against a fake server, without loading any model.
+
+## SAIAS app (Windows)
+
+`SAIAS.exe` is the desktop app. It stays in the notification area: right-click the icon to open Llama Chat, see which profile is loaded, start or stop SAIAS, check for updates or quit. Closing the window keeps it running; **Quit SAIAS** also stops the models. **Start with Windows** starts it hidden (`SAIAS.exe --tray`) and gets the hub ready.
+
+Model updates stay manual. The app checks the published catalog at start and every six hours (`saias update --check --json`); when a newer one is available, a banner lists the profile changes and the download size, with an **Update** button. The update runs in a console so its progress is visible, and the hub restarts with the new models.
 
 ### Hardware advisor
 
@@ -112,16 +139,18 @@ Build with CMake 3.20 or newer and a C++20 compiler. On Windows, with Visual Stu
 ```powershell
 cmake -S SAIAS-LLM -B build
 cmake --build build --config Release
-.\build\Release\SAIAS-LLM.exe
+.\build\Release\SAIAS.exe
 ```
 
-With a single-configuration CMake generator, the executable is `build\SAIAS-LLM.exe`. The Linux and macOS builds use a terminal interface.
+With a single-configuration CMake generator, the executable is `build\SAIAS.exe`. The Linux and macOS builds use a terminal interface.
 
 ```sh
 cmake -S SAIAS-LLM -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build
-./build/SAIAS-LLM
+./build/SAIAS
 ```
+
+**Installer.** `scripts\Build-Installer.ps1` builds the app in `build-release` and packages it with [Inno Setup 6](https://jrsoftware.org/isinfo.php) into `dist\SAIAS-Setup-<version>.exe` (version from `package.json`). Set `SAIAS_SIGN_CERT` to a code signing certificate thumbprint to sign the app and the installer with `signtool`; unsigned installers trigger a SmartScreen warning. Uninstalling stops SAIAS and asks before deleting the downloaded models in `%LOCALAPPDATA%\SAIAS`.
 
 ### Chat
 

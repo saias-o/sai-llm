@@ -13,6 +13,9 @@ The items below are ordered by impact.
 - Machine-specific settings removed (the `D:\LLM\bonsai2` fallback, fixed thread counts, the two-GPU Vulkan split, per-model folders). Everything lives in `%LOCALAPPDATA%\SAIAS`; `"device": "auto"` picks the GPU.
 - Private Node.js LTS installed by `saias.cmd` when none is available (verified against nodejs.org checksums).
 - `saias adopt` reuses runtimes and model files already on disk.
+- Agent evaluation suite (`saias eval`: tools, code, long context, instructions) and speed benchmark (`saias bench`), validated against a fake server by `npm test`; results feed `saias status` and advice.
+- SAIAS Windows app (`SAIAS.exe`): notification area icon, start with Windows, update banner with an Update button (updates stay manual).
+- Windows installer (`installer/saias.iss`, `scripts/Build-Installer.ps1`): per-user, no administrator rights, optional signing.
 - Coding tools connected by `saias connect` (OpenCode, Codex, Hermes) and `saias claude` (Claude Code on the hub's Anthropic Messages API, without changing Claude Code settings). The hub translates `reasoning_effort`, Responses `reasoning.effort` and Anthropic `thinking`. `saias stop`, and an optional PATH entry for `saias`.
 
 ## Known gaps
@@ -20,7 +23,8 @@ The items below are ordered by impact.
 - **Tool-calling fixes are not in the published runtimes.** The b12631 release archives in the catalog predate three llama.cpp chat parser fixes (#29307, #32497, #32833) that Inkling tool calls need. Publish SAIAS runtime builds (for example as GitHub releases of this repository) or move to an upstream release that includes them.
 - **The native advisor duplicates the catalog rules.** `SAIAS-LLM/advisor.cpp` has its own hardware thresholds; it should read `saias status --json` or the catalog instead.
 - **Native chat capabilities are static.** Image support per profile is hard-coded in `SAIAS-LLM/chat.cpp`; it should come from the hub's `/v1/models` (`saias.vision`).
-- **No first-run benchmark yet**; variant choice uses hardware thresholds only.
+- **Benchmarks and evaluations have not been run on real models yet.** Publish the first results for each profile in the repository, and let measured speed choose between variants (today the benchmark only advises).
+- **The installer is not signed** and has not been built yet on a machine with Inno Setup; it also leaves the PATH entry added by `saias install` after uninstall.
 - **Coding tools are configured but not yet validated end to end** on each local model (tool calls through OpenCode, Codex Responses and Claude Code Messages). This needs the agent evaluation suite.
 - **Continue, Cline and Aider** are documented with the generic OpenAI settings but not configured automatically.
 

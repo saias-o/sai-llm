@@ -85,7 +85,7 @@ public:
             }
         }
         if (!library_) {
-            throw std::wstring(L"PDF conversion needs pdfium.dll next to SAIAS-LLM.exe.");
+            throw std::wstring(L"PDF conversion needs pdfium.dll next to SAIAS.exe.");
         }
     }
     ~Library() { FreeLibrary(library_); }

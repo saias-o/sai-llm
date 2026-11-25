@@ -23,7 +23,7 @@ int main() {
     try {
         const auto pc = saias::scan_hardware();
         const auto advice = saias::recommend(pc);
-        std::wcout << L"SAIAS-LLM Model Advisor\n"
+        std::wcout << L"SAIAS Model Advisor\n"
                    << L"CPU: " << pc.cpu << L"  |  Physical cores: " << pc.physical_cores << L'\n'
                    << L"Usable system RAM: " << saias::gib(pc.ram_gib) << L'\n';
         for (const auto& gpu : pc.adapters) {

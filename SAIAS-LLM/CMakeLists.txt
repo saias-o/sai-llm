@@ -1,10 +1,10 @@
 cmake_minimum_required(VERSION 3.20)
-project(SaiasLlmAdvisor LANGUAGES CXX)
+project(Saias LANGUAGES CXX)
 
 if(WIN32)
     enable_language(RC)
     add_executable(SAIAS-LLM WIN32 main_windows.cpp hardware_windows.cpp advisor.cpp chat.cpp chat_windows.cpp
-        attachments.cpp pdf_ocr.cpp app.rc)
+        attachments.cpp pdf_ocr.cpp saias_cli.cpp app.rc)
     target_include_directories(SAIAS-LLM PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
     target_compile_definitions(SAIAS-LLM PRIVATE UNICODE _UNICODE NOMINMAX WIN32_LEAN_AND_MEAN
         WINVER=0x0A00 _WIN32_WINNT=0x0A00)
@@ -23,4 +23,4 @@ else()
 endif()
 
 target_compile_features(SAIAS-LLM PRIVATE cxx_std_20)
-set_target_properties(SAIAS-LLM PROPERTIES CXX_EXTENSIONS OFF)
+set_target_properties(SAIAS-LLM PROPERTIES CXX_EXTENSIONS OFF OUTPUT_NAME SAIAS)

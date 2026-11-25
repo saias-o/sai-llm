@@ -176,38 +176,50 @@ async function install(opts) {
 
 // ---------------------------------------------------------------- update and rollback
 
-async function update(opts) {
+// Compares the installed catalog with the latest one. Never prints: used by "update" and by
+// "update --check --json" (the native app's update banner).
+async function checkUpdate() {
   const state = store.load();
   if (!Object.keys(state.profiles).length) throw new Error('SAIAS is not installed yet. Run: saias install');
   const current = catalogs.installed() || catalogs.bundled();
-  ui.step('Catalog');
   let latest;
+  let fetchError = null;
   try {
     latest = await catalogs.remote();
   } catch (e) {
-    ui.bad(`${e.message}. Using the catalog shipped with this copy of SAIAS.`);
+    fetchError = `${e.message}. Using the catalog shipped with this copy of SAIAS.`;
     latest = catalogs.bundled();
   }
-  ui.info(`Installed: ${current.version}. Latest: ${latest.version}.`);
-  if (catalogs.compareVersions(latest.version, current.version) <= 0) { ui.ok('SAIAS models are up to date.'); return; }
-
+  const result = { installed: current.version, latest: latest.version, available: false, changes: [], skipped: [], downloadBytes: 0, error: fetchError };
+  if (catalogs.compareVersions(latest.version, current.version) <= 0) return { result, state, current, latest, plan: [] };
   const hw = hardware.detect();
-  const changes = [];
   const plan = [];
   for (const id of Object.keys(state.profiles)) {
     const r = resolveProfile(latest, id, hw);
-    if (r.error) { ui.bad(`${profileName(id)}: ${r.error} in the new catalog; keeping the current version.`); continue; }
+    if (r.error) { result.skipped.push(`${profileName(id)}: ${r.error} in the new catalog; keeping the current version.`); continue; }
     plan.push(r);
     const before = current.profiles[id]?.variants.find(v => v.id === state.profiles[id].variant);
     if (!before || before.model !== r.variant.model || before.runtime !== r.variant.runtime || JSON.stringify(before.server) !== JSON.stringify(r.variant.server)) {
-      changes.push(`${profileName(id)}: ${before ? current.models[before.model].name : 'new'} -> ${r.model.name}`);
+      result.changes.push({ profile: profileName(id), from: before ? current.models[before.model].name : null, to: r.model.name });
     }
   }
+  result.available = true;
+  result.downloadBytes = plan.reduce((s, r) => s + missingBytes(state, r), 0);
+  return { result, state, current, latest, plan };
+}
+
+async function update(opts) {
+  const { result, state, current, latest, plan } = await checkUpdate();
+  if (opts.json) { console.log(JSON.stringify(result)); return; }
+  ui.step('Catalog');
+  if (result.error) ui.bad(result.error);
+  ui.info(`Installed: ${result.installed}. Latest: ${result.latest}.`);
+  if (!result.available) { ui.ok('SAIAS models are up to date.'); return; }
+  for (const line of result.skipped) ui.bad(line);
   ui.step('Changes');
-  if (!changes.length) ui.info('No profile changes; only catalog metadata changed.');
-  for (const c of changes) ui.info(c);
-  const need = plan.reduce((s, r) => s + missingBytes(state, r), 0);
-  if (need) ui.info(`Download: ${ui.size(need)}`);
+  if (!result.changes.length) ui.info('No profile changes; only catalog metadata changed.');
+  for (const c of result.changes) ui.info(`${c.profile}: ${c.from || 'new'} -> ${c.to}`);
+  if (result.downloadBytes) ui.info(`Download: ${ui.size(result.downloadBytes)}`);
   if (opts.check) return;
   if (!(await ui.confirm('Apply this update?', true, opts.yes))) return;
 
@@ -313,7 +325,7 @@ async function status(opts) {
   const catalog = catalogs.installed();
   const hub = await hubRunning();
   if (opts.json) {
-    console.log(JSON.stringify({ home: paths.home, catalogVersion: state.catalogVersion, profiles: state.profiles, hub }, null, 2));
+    console.log(JSON.stringify({ home: paths.home, catalogVersion: state.catalogVersion, profiles: state.profiles, benchmarks: state.benchmarks || {}, hub }, null, 2));
     return;
   }
   printHardware(hardware.detect());
@@ -330,6 +342,12 @@ async function status(opts) {
     const runtimeOk = store.runtimeDir(state, variant.runtime, runtime);
     const line = `${profileName(id).padEnd(12)} ${model.name}, ${runtime.name}${entry.device ? `, device ${entry.device}` : ''}`;
     if (filesOk && runtimeOk) ui.ok(line); else ui.bad(`${line}: files missing, run "saias install"`);
+    const b = state.benchmarks?.[id];
+    if (b && b.variant === entry.variant) {
+      ui.info(`${''.padEnd(17)}${b.genTps} tokens/s generation, ${b.promptTps?.[4096] ?? b.promptTps?.[512] ?? '?'} tokens/s prompt (${b.rating}, measured ${b.date.slice(0, 10)})`);
+    } else {
+      ui.info(`${''.padEnd(17)}speed not measured yet: run "saias bench"`);
+    }
   }
   ui.step('Hub');
   if (hub) for (const p of hub.profiles) ui.info(`${p.id.padEnd(12)} ${p.status}`);

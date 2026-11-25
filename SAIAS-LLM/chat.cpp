@@ -1,4 +1,5 @@
 #include "chat.hpp"
+#include "saias_cli.hpp"
 #include "third_party/picojson.h"
 
 #include <windows.h>
@@ -39,8 +40,6 @@ constexpr std::array levels{
     Level{L"Extra high", "xhigh"},
 };
 
-// The SAIAS hub serves every profile on one local endpoint (src/hub.js).
-constexpr unsigned short hub_port = 8090;
 
 constexpr std::size_t archive_limit = 32 * 1024 * 1024;
 constexpr std::size_t settings_limit = 1024 * 1024;
@@ -436,30 +435,16 @@ struct Backend {
     unsigned short port;
 };
 
-// The SAIAS folder holding saias.cmd, found from the executable's location upwards.
+// The SAIAS hub serves every profile on one local endpoint (src/hub.js).
 Backend find_backend() {
-    std::array<wchar_t, 32768> name{};
-    const auto length = GetModuleFileNameW(nullptr, name.data(), static_cast<DWORD>(name.size()));
-    std::filesystem::path project;
-    if (length && length < name.size()) {
-        auto folder = std::filesystem::path(std::wstring_view(name.data(), length)).parent_path();
-        for (; folder.is_absolute() && folder.has_relative_path(); folder = folder.parent_path()) {
-            std::error_code error;
-            if (std::filesystem::is_regular_file(folder / L"saias.cmd", error)
-                && std::filesystem::is_regular_file(folder / L"catalog" / L"catalog.json", error)) {
-                project = std::move(folder);
-                break;
-            }
-        }
-    }
-    return {std::move(project), hub_port};
+    return {cli::project_folder(), cli::hub_port};
 }
 
 using ProcessHandle = std::unique_ptr<void, decltype(&CloseHandle)>;
 
 std::wstring launch_backend(const Backend& backend, ProcessHandle& process) {
     if (backend.project.empty()) {
-        return L"Could not find saias.cmd. Open SAIAS-LLM.exe from the SAIAS folder or its build folder.";
+        return L"Could not find saias.cmd. Open SAIAS.exe from the SAIAS folder or its build folder.";
     }
     std::array<wchar_t, MAX_PATH> system{};
     const auto length = GetSystemDirectoryW(system.data(), static_cast<UINT>(system.size()));
@@ -697,7 +682,7 @@ std::wstring run_request(const Conversation& conversation, const Settings& setti
     const auto& model = models.at(conversation.model);
     const auto backend = find_backend();
     // Both the readiness checks and the chat request use the same fixed loopback endpoint.
-    InternetHandle session(WinHttpOpen(L"SAIAS-LLM/1.0", WINHTTP_ACCESS_TYPE_NO_PROXY,
+    InternetHandle session(WinHttpOpen(L"SAIAS/1.0", WINHTTP_ACCESS_TYPE_NO_PROXY,
         WINHTTP_NO_PROXY_NAME, WINHTTP_NO_PROXY_BYPASS, WINHTTP_FLAG_ASYNC));
     if (!session.handle) {
         return error_message(GetLastError(), backend.port);

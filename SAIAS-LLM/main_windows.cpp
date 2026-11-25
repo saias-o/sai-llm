@@ -1,6 +1,8 @@
 #include "advisor.hpp"
 #include "chat_windows.hpp"
 #include "hermes_guide.hpp"
+#include "saias_cli.hpp"
+#include "third_party/picojson.h"
 
 #include <windows.h>
 #include <d2d1.h>
@@ -9,18 +11,28 @@
 #include <shellapi.h>
 #include <wrl/client.h>
 
+#include <windowsx.h>
+
 #include <algorithm>
 #include <array>
 #include <iterator>
+#include <memory>
 #include <mutex>
+#include <optional>
+#include <string>
 #include <thread>
 #include <utility>
+#include <vector>
 
 namespace {
 
 using Microsoft::WRL::ComPtr;
-constexpr auto window_class = L"SaiasLlmModelAdvisor";
+constexpr auto window_class = L"SaiasApp";
 constexpr UINT scan_complete = WM_APP + 1;
+constexpr UINT update_checked = WM_APP + 2;
+constexpr UINT update_finished = WM_APP + 3;
+constexpr UINT tray_message = WM_APP + 4;
+constexpr UINT show_request = WM_APP + 5;
 constexpr int rescan_button = 100;
 constexpr int setup_button = 101;
 constexpr int back_button = 102;
@@ -29,10 +41,24 @@ constexpr int copy_button = 104;
 constexpr int docs_button = 105;
 constexpr int advisor_button = 106;
 constexpr int chat_button = 107;
+constexpr int update_button = 108;
+constexpr UINT tray_open = 200;
+constexpr UINT tray_web = 201;
+constexpr UINT tray_start = 202;
+constexpr UINT tray_stop = 203;
+constexpr UINT tray_check = 204;
+constexpr UINT tray_update = 205;
+constexpr UINT tray_autostart = 206;
+constexpr UINT tray_quit = 207;
+constexpr UINT_PTR update_timer = 1;
+constexpr UINT update_interval_ms = 6 * 60 * 60 * 1000;
+constexpr auto run_key = L"Software\\Microsoft\\Windows\\CurrentVersion\\Run";
+constexpr auto hub_url = L"http://127.0.0.1:8090/";
 constexpr UINT first_step_button = 110;
 constexpr auto step_count = saias::hermes_guide.size();
 constexpr float margin = 28;
 constexpr float header_height = 58;
+constexpr float banner_height = 46;
 constexpr float recommendation_top = 126;
 constexpr float recommendation_height = 106;
 constexpr float hardware_top = 396;
@@ -217,6 +243,105 @@ float Canvas::measure(std::wstring_view value, Type style, float width) const {
     return std::max(metrics.height, 18.0f);
 }
 
+std::wstring wide(std::string_view text) {
+    if (text.empty()) {
+        return {};
+    }
+    const int size = MultiByteToWideChar(CP_UTF8, 0, text.data(), static_cast<int>(text.size()), nullptr, 0);
+    std::wstring result(static_cast<std::size_t>(std::max(size, 0)), L'\0');
+    MultiByteToWideChar(CP_UTF8, 0, text.data(), static_cast<int>(text.size()), result.data(), size);
+    return result;
+}
+
+std::wstring executable_path() {
+    std::array<wchar_t, 32768> name{};
+    const auto length = GetModuleFileNameW(nullptr, name.data(), static_cast<DWORD>(name.size()));
+    return std::wstring(name.data(), length < name.size() ? length : 0);
+}
+
+bool autostart_enabled() {
+    DWORD size = 0;
+    return RegGetValueW(HKEY_CURRENT_USER, run_key, L"SAIAS", RRF_RT_REG_SZ, nullptr, nullptr, &size) == ERROR_SUCCESS;
+}
+
+void set_autostart(bool enabled) {
+    if (!enabled) {
+        RegDeleteKeyValueW(HKEY_CURRENT_USER, run_key, L"SAIAS");
+        return;
+    }
+    const auto command = L"\"" + executable_path() + L"\" --tray";
+    RegSetKeyValueW(HKEY_CURRENT_USER, run_key, L"SAIAS", REG_SZ, command.c_str(),
+        static_cast<DWORD>((command.size() + 1) * sizeof(wchar_t)));
+}
+
+struct ProfileStatus {
+    std::wstring id;
+    std::wstring status;
+};
+
+// Profiles and their state, or nothing when the hub is not running.
+std::optional<std::vector<ProfileStatus>> hub_status() {
+    const auto response = saias::cli::hub_request(L"GET", L"/saias/status", 800);
+    if (!response || response->status != 200) {
+        return std::nullopt;
+    }
+    picojson::value json;
+    if (!picojson::parse(json, response->body).empty() || !json.is<picojson::object>()) {
+        return std::nullopt;
+    }
+    std::vector<ProfileStatus> result;
+    const auto& profiles = json.get("profiles");
+    if (profiles.is<picojson::array>()) {
+        for (const auto& item : profiles.get<picojson::array>()) {
+            result.push_back({wide(item.get("id").to_str()), wide(item.get("status").to_str())});
+        }
+    }
+    return result;
+}
+
+void stop_hub() {
+    saias::cli::hub_request(L"POST", L"/saias/stop", 3000, L"X-SAIAS: 1\r\n");
+}
+
+void start_hub() {
+    if (const auto process = saias::cli::launch(L"start", false)) {
+        CloseHandle(process);
+    }
+}
+
+struct UpdateInfo {
+    bool available = false;
+    std::wstring summary;
+};
+
+// Reads "saias update --check --json": installed and latest catalog, profile changes, download size.
+UpdateInfo parse_update(const std::string& output) {
+    UpdateInfo info;
+    const auto start = output.find('{');
+    picojson::value json;
+    if (start == std::string::npos || !picojson::parse(json, output.substr(start)).empty() || !json.is<picojson::object>()) {
+        return info;
+    }
+    info.available = json.get("available").is<bool>() && json.get("available").get<bool>();
+    if (!info.available) {
+        return info;
+    }
+    info.summary = L"SAIAS update available: catalog " + wide(json.get("latest").to_str());
+    const auto& changes = json.get("changes");
+    if (changes.is<picojson::array>()) {
+        for (const auto& change : changes.get<picojson::array>()) {
+            info.summary += L". " + wide(change.get("profile").to_str()) + L" \u2192 " + wide(change.get("to").to_str());
+        }
+    }
+    const double bytes = json.get("downloadBytes").is<double>() ? json.get("downloadBytes").get<double>() : 0;
+    if (bytes > 0) {
+        wchar_t size[32]{};
+        swprintf(size, std::size(size), bytes >= 1e9 ? L"%.1f GB" : L"%.0f MB", bytes >= 1e9 ? bytes / 1e9 : bytes / 1e6);
+        info.summary += L" (" + std::wstring(size) + L" to download)";
+    }
+    return info;
+}
+
 struct Scan {
     saias::Hardware hardware;
     std::optional<saias::Advice> advice;
@@ -237,7 +362,7 @@ struct StepLayout {
 class Window {
 public:
     explicit Window(HINSTANCE application) : application_(application) {}
-    bool open(int show);
+    bool open(int show, bool tray_only);
     int run();
 
 private:
@@ -257,6 +382,15 @@ private:
     void recommendation(float y, float width, const saias::Choice* choice, bool everyday);
     void hardware(float width);
     void paint_button(const DRAWITEMSTRUCT& item) const;
+    void check_updates();
+    void accept_update(UpdateInfo info);
+    void run_update();
+    void add_tray();
+    void tray_menu(POINT at);
+    void notify(const wchar_t* title, const std::wstring& message);
+    void show_window();
+    void quit();
+    float banner() const { return update_info_.available ? banner_height : 0; }
     int px(float dips) const { return static_cast<int>(dips * dpi_ / 96.0f + 0.5f); }
     float dips(int pixels) const { return pixels * 96.0f / dpi_; }
 
@@ -272,7 +406,16 @@ private:
     HWND next_ = nullptr;
     HWND copy_ = nullptr;
     HWND docs_ = nullptr;
+    HWND update_ = nullptr;
     UINT dpi_ = 96;
+    UINT taskbar_created_ = RegisterWindowMessageW(L"TaskbarCreated");
+    NOTIFYICONDATAW tray_{};
+    bool tray_added_ = false;
+    bool tray_hint_shown_ = false;
+    bool quitting_ = false;
+    bool checking_update_ = false;
+    bool updating_ = false;
+    UpdateInfo update_info_;
     Canvas canvas_;
     float scroll_ = 0;
     float max_scroll_ = 0;
@@ -286,7 +429,7 @@ private:
     std::jthread worker_;
 };
 
-bool Window::open(int show) {
+bool Window::open(int show, bool tray_only) {
     if (!canvas_.initialize()) {
         return false;
     }
@@ -313,7 +456,7 @@ bool Window::open(int show) {
     const LONG available_height = monitor.rcWork.bottom - monitor.rcWork.top;
     const LONG width = std::min(requested.right - requested.left, available_width);
     const LONG height = std::min(requested.bottom - requested.top, available_height);
-    window_ = CreateWindowExW(0, window_class, L"SAIAS-LLM | Model Advisor", style,
+    window_ = CreateWindowExW(0, window_class, L"SAIAS", style,
         monitor.rcWork.left + (available_width - width) / 2,
         monitor.rcWork.top + (available_height - height) / 2, width, height,
         nullptr, nullptr, application_, this);
@@ -327,8 +470,16 @@ bool Window::open(int show) {
     DwmSetWindowAttribute(window_, 35, &caption, sizeof(caption));
     DwmSetWindowAttribute(window_, 36, &caption_text, sizeof(caption_text));
     scan();
-    ShowWindow(window_, show);
-    UpdateWindow(window_);
+    add_tray();
+    SetTimer(window_, update_timer, update_interval_ms, nullptr);
+    check_updates();
+    if (tray_only) {
+        // Started with Windows: stay in the notification area and get the models ready.
+        std::thread([] { if (!hub_status()) start_hub(); }).detach();
+    } else {
+        ShowWindow(window_, show);
+        UpdateWindow(window_);
+    }
     return true;
 }
 
@@ -346,7 +497,7 @@ int Window::run() {
         if (message.message == WM_KEYDOWN && view_ != View::chat && (message.wParam == VK_NEXT || message.wParam == VK_PRIOR)) {
             RECT area{};
             GetClientRect(window_, &area);
-            const float fixed_height = view_ == View::guide ? setup_body_top + setup_footer_height : header_height;
+            const float fixed_height = (view_ == View::guide ? setup_body_top + setup_footer_height : header_height) + banner();
             const float viewport = dips(area.bottom) - fixed_height;
             scroll_by((viewport - 24) * (message.wParam == VK_NEXT ? 1 : -1));
             continue;
@@ -388,7 +539,8 @@ LRESULT Window::handle(UINT message, WPARAM wparam, LPARAM lparam) {
             copy_ = add_button(copy_button, L"Copy", false);
             docs_ = add_button(docs_button, L"Docs", false);
             next_ = add_button(next_button, L"Next", false);
-            if (!rescan_ || !advisor_ || !setup_ || !chat_ || !back_ || !copy_ || !docs_ || !next_) {
+            update_ = add_button(update_button, L"Update", false);
+            if (!rescan_ || !advisor_ || !setup_ || !chat_ || !back_ || !copy_ || !docs_ || !next_ || !update_) {
                 return -1;
             }
             resize();
@@ -420,7 +572,7 @@ LRESULT Window::handle(UINT message, WPARAM wparam, LPARAM lparam) {
             } else {
                 SetBkMode(dc, TRANSPARENT);
                 FillRect(dc, &paint.rcPaint, reinterpret_cast<HBRUSH>(COLOR_WINDOW + 1));
-                constexpr auto error = L"SAIAS-LLM could not initialize the graphics surface.";
+                constexpr auto error = L"SAIAS could not initialize the graphics surface.";
                 TextOutW(dc, 24, 96, error, lstrlenW(error));
             }
             EndPaint(window_, &paint);
@@ -447,6 +599,7 @@ LRESULT Window::handle(UINT message, WPARAM wparam, LPARAM lparam) {
                         }
                         break;
                     case copy_button: copy_step(); break;
+                    case update_button: run_update(); break;
                     case docs_button: open_step_docs(); break;
                     default:
                         if (view_ == View::guide && id >= first_step_button && id < first_step_button + step_count) {
@@ -466,9 +619,64 @@ LRESULT Window::handle(UINT message, WPARAM wparam, LPARAM lparam) {
         case scan_complete:
             accept_scan();
             return 0;
+        case update_checked: {
+            std::unique_ptr<UpdateInfo> info(reinterpret_cast<UpdateInfo*>(lparam));
+            checking_update_ = false;
+            if (info) {
+                accept_update(std::move(*info));
+            }
+            return 0;
+        }
+        case update_finished:
+            updating_ = false;
+            SetWindowTextW(update_, L"Update");
+            EnableWindow(update_, TRUE);
+            check_updates();
+            return 0;
+        case WM_TIMER:
+            if (wparam == update_timer) {
+                check_updates();
+            }
+            return 0;
+        case tray_message:
+            switch (LOWORD(lparam)) {
+                case WM_CONTEXTMENU:
+                    tray_menu(POINT{GET_X_LPARAM(wparam), GET_Y_LPARAM(wparam)});
+                    break;
+                case NIN_SELECT:
+                case NIN_KEYSELECT:
+                    show_window();
+                    break;
+            }
+            return 0;
+        case show_request:
+            show_window();
+            return 0;
+        case WM_CLOSE:
+            if (!quitting_ && tray_added_) {
+                // Closing the window keeps SAIAS in the notification area; "Quit SAIAS" exits.
+                ShowWindow(window_, SW_HIDE);
+                if (!tray_hint_shown_) {
+                    tray_hint_shown_ = true;
+                    notify(L"SAIAS is still running", L"Right-click the SAIAS icon to open Llama Chat, update models or quit.");
+                }
+                return 0;
+            }
+            DestroyWindow(window_);
+            return 0;
         case WM_DESTROY:
+            KillTimer(window_, update_timer);
+            if (tray_added_) {
+                Shell_NotifyIconW(NIM_DELETE, &tray_);
+            }
             PostQuitMessage(0);
             return 0;
+    }
+    if (message == taskbar_created_ && taskbar_created_) {
+        // Explorer restarted: put the icon back.
+        tray_added_ = false;
+        add_tray();
+        return 0;
     }
     return DefWindowProcW(window_, message, wparam, lparam);
 }
@@ -521,7 +729,7 @@ void Window::show_view(View view) {
     if (view == View::chat && !chat_panel_) {
         chat_panel_ = saias::chat::create_panel(application_, window_);
         if (!chat_panel_) {
-            MessageBoxW(window_, L"The chat panel could not be opened.", L"SAIAS-LLM", MB_OK | MB_ICONERROR);
+            MessageBoxW(window_, L"The chat panel could not be opened.", L"SAIAS", MB_OK | MB_ICONERROR);
             return;
         }
     }
@@ -611,6 +819,8 @@ void Window::resize() {
         MoveWindow(chat_, nav_right - px(74), px(13), px(74), px(32), TRUE);
         MoveWindow(setup_, nav_right - px(209), px(13), px(126), px(32), TRUE);
         MoveWindow(advisor_, nav_right - px(301), px(13), px(83), px(32), TRUE);
+        MoveWindow(update_, area.right - px(margin + 120), px(header_height + 7), px(120), px(32), TRUE);
+        ShowWindow(update_, update_info_.available ? SW_SHOW : SW_HIDE);
     }
     float viewport_bottom = dips(area.bottom);
     float content_bottom = viewport_bottom;
@@ -621,7 +831,7 @@ void Window::resize() {
         const float tab_width = (content_width - (step_count - 1) * gap) / step_count;
         float tab_left = margin;
         for (const auto button : step_buttons_) {
-            MoveWindow(button, px(tab_left), px(113), px(tab_left + tab_width) - px(tab_left), px(34), TRUE);
+            MoveWindow(button, px(tab_left), px(113 + banner()), px(tab_left + tab_width) - px(tab_left), px(34), TRUE);
             tab_left += tab_width + gap;
         }
         const auto button_top = px(viewport_bottom + 13);
@@ -636,12 +846,13 @@ void Window::resize() {
         step_layout_.instructions_height = canvas_.measure(step.instructions, Type::wrapped, inner);
         step_layout_.example_height = canvas_.measure(step.example, Type::code, std::max(1.0f, inner - 28)) + 24;
         step_layout_.note_height = canvas_.measure(step.note, Type::wrapped, inner);
-        content_bottom = step_layout_.bottom() + margin;
+        content_bottom = step_layout_.bottom() + margin + banner();
     } else if (view_ == View::advisor) {
         const float rows = static_cast<float>(std::max<std::size_t>(current_.hardware.adapters.size(), 1));
-        content_bottom = hardware_top + 2 * hardware_row + rows * gpu_height + 61;
+        content_bottom = hardware_top + 2 * hardware_row + rows * gpu_height + 61 + banner();
     } else {
-        MoveWindow(chat_panel_, 0, px(header_height), area.right, std::max(0L, area.bottom - px(header_height)), TRUE);
+        const int top = px(header_height + banner());
+        MoveWindow(chat_panel_, 0, top, area.right, std::max(0L, area.bottom - top), TRUE);
     }
     max_scroll_ = std::max(0.0f, content_bottom - viewport_bottom);
     scroll_ = std::clamp(scroll_, 0.0f, max_scroll_);
@@ -665,7 +876,7 @@ void Window::paint_button(const DRAWITEMSTRUCT& item) const {
     const bool active_view = (item.CtlID == advisor_button && view_ == View::advisor)
         || (item.CtlID == setup_button && view_ == View::guide)
         || (item.CtlID == chat_button && view_ == View::chat);
-    const bool accent = selected_step || active_view || item.CtlID == next_button;
+    const bool accent = selected_step || active_view || item.CtlID == next_button || item.CtlID == update_button;
     const auto fill_color = accent ? (pressed ? 0x253A2C : 0x142219) : (pressed ? 0x292929 : surface);
     const auto edge_color = focused ? red : (accent ? 0x41634C : 0x3B3B3B);
     const auto brush = static_cast<HBRUSH>(GetStockObject(DC_BRUSH));
@@ -704,14 +915,14 @@ void Window::draw() {
     const float width = dips(area.right);
     const float height = dips(area.bottom);
     const float content = width - 2 * margin;
-    const float viewport_top = view_ == View::guide ? setup_body_top : header_height;
+    const float viewport_top = (view_ == View::guide ? setup_body_top : header_height) + banner();
     const float viewport_bottom = height - (view_ == View::guide ? setup_footer_height : 0);
     if (content < 100 || viewport_bottom < viewport_top) {
         return;
     }
 
     canvas_.clip(bounds(0, viewport_top, width, viewport_bottom - viewport_top));
-    canvas_.translate(-scroll_);
+    canvas_.translate(banner() - scroll_);
     if (view_ == View::guide) {
         draw_setup_step(content);
     } else if (view_ == View::advisor) {
@@ -730,10 +941,15 @@ void Window::draw() {
 
     canvas_.fill(bounds(0, 0, width, header_height), header);
     canvas_.rule(0, header_height - 1, width, border);
-    canvas_.label(L"SAIAS-LLM", Type::section, bounds(margin, 17, 180, 24));
+    canvas_.label(L"SAIAS", Type::section, bounds(margin, 17, 180, 24));
+    if (update_info_.available) {
+        canvas_.fill(bounds(0, header_height, width, banner_height), 0x142219);
+        canvas_.rule(0, header_height + banner_height - 1, width, 0x41634C);
+        canvas_.label(update_info_.summary, Type::body, bounds(margin, header_height + 13, content - 136, 22), green);
+    }
 
     if (view_ == View::guide) {
-        canvas_.label(L"Hermes Setup", Type::title, bounds(margin, 73, content, 38));
+        canvas_.label(L"Hermes Setup", Type::title, bounds(margin, 73 + banner(), content, 38));
         canvas_.fill(bounds(0, viewport_bottom, width, setup_footer_height), header);
         canvas_.rule(0, viewport_bottom, width, border);
     }
@@ -852,13 +1068,163 @@ void Window::hardware(float width) {
                   Type::body, bounds(x, footer, width, 22), muted);
 }
 
+void Window::check_updates() {
+    if (checking_update_ || updating_ || saias::cli::project_folder().empty()) {
+        return;
+    }
+    checking_update_ = true;
+    std::thread([window = window_] {
+        const auto result = saias::cli::run_capture(L"update --check --json", 120000);
+        auto* info = new UpdateInfo(result.started && result.exit_code == 0 ? parse_update(result.output) : UpdateInfo{});
+        if (!PostMessageW(window, update_checked, 0, reinterpret_cast<LPARAM>(info))) {
+            delete info;
+        }
+    }).detach();
+}
+
+void Window::accept_update(UpdateInfo info) {
+    const bool newly_available = info.available && !update_info_.available;
+    update_info_ = std::move(info);
+    if (tray_added_) {
+        wcsncpy_s(tray_.szTip, update_info_.available ? L"SAIAS - update available" : L"SAIAS", _TRUNCATE);
+        tray_.uFlags = NIF_TIP | NIF_SHOWTIP;
+        Shell_NotifyIconW(NIM_MODIFY, &tray_);
+    }
+    if (newly_available && !IsWindowVisible(window_)) {
+        notify(L"SAIAS update available", update_info_.summary);
+    }
+    resize();
+}
+
+// Runs "saias update --yes" in a console so the download progress stays visible, then restarts
+// the hub if it was running so the new models are used.
+void Window::run_update() {
+    if (updating_) {
+        return;
+    }
+    const bool was_running = hub_status().has_value();
+    const HANDLE process = saias::cli::launch(L"update --yes", true);
+    if (!process) {
+        MessageBoxW(window_, L"Could not start the SAIAS update. Run saias.cmd update in the SAIAS folder.", L"SAIAS",
+            MB_OK | MB_ICONERROR);
+        return;
+    }
+    updating_ = true;
+    SetWindowTextW(update_, L"Updating…");
+    EnableWindow(update_, FALSE);
+    std::thread([window = window_, process, was_running] {
+        WaitForSingleObject(process, INFINITE);
+        CloseHandle(process);
+        if (was_running) {
+            stop_hub();
+            Sleep(1500);
+            start_hub();
+        }
+        PostMessageW(window, update_finished, 0, 0);
+    }).detach();
+}
+
+void Window::add_tray() {
+    if (tray_added_) {
+        return;
+    }
+    tray_ = {};
+    tray_.cbSize = sizeof(tray_);
+    tray_.hWnd = window_;
+    tray_.uID = 1;
+    tray_.uFlags = NIF_ICON | NIF_MESSAGE | NIF_TIP | NIF_SHOWTIP;
+    tray_.uCallbackMessage = tray_message;
+    tray_.hIcon = static_cast<HICON>(LoadImageW(application_, MAKEINTRESOURCEW(101), IMAGE_ICON,
+        GetSystemMetrics(SM_CXSMICON), GetSystemMetrics(SM_CYSMICON), LR_DEFAULTCOLOR));
+    wcsncpy_s(tray_.szTip, L"SAIAS", _TRUNCATE);
+    tray_added_ = Shell_NotifyIconW(NIM_ADD, &tray_);
+    if (tray_added_) {
+        tray_.uVersion = NOTIFYICON_VERSION_4;
+        Shell_NotifyIconW(NIM_SETVERSION, &tray_);
+    }
+}
+
+void Window::notify(const wchar_t* title, const std::wstring& message) {
+    if (!tray_added_) {
+        return;
+    }
+    tray_.uFlags = NIF_INFO;
+    tray_.dwInfoFlags = NIIF_USER | NIIF_LARGE_ICON;
+    wcsncpy_s(tray_.szInfoTitle, title, _TRUNCATE);
+    wcsncpy_s(tray_.szInfo, message.c_str(), _TRUNCATE);
+    Shell_NotifyIconW(NIM_MODIFY, &tray_);
+}
+
+void Window::tray_menu(POINT at) {
+    const auto profiles = hub_status();
+    HMENU menu = CreatePopupMenu();
+    AppendMenuW(menu, MF_STRING, tray_open, L"Open SAIAS");
+    AppendMenuW(menu, MF_STRING | (profiles ? 0 : MF_GRAYED), tray_web, L"Open Llama Chat");
+    AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
+    AppendMenuW(menu, MF_STRING | MF_GRAYED, 0, profiles ? L"SAIAS is running" : L"SAIAS is stopped");
+    if (profiles) {
+        for (const auto& p : *profiles) {
+            const auto line = L"    " + p.id + L": " + p.status;
+            AppendMenuW(menu, MF_STRING | MF_GRAYED, 0, line.c_str());
+        }
+    }
+    AppendMenuW(menu, MF_STRING, profiles ? tray_stop : tray_start, profiles ? L"Stop SAIAS" : L"Start SAIAS");
+    AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
+    if (update_info_.available) {
+        AppendMenuW(menu, MF_STRING | (updating_ ? MF_GRAYED : 0), tray_update, L"Update models…");
+    } else {
+        AppendMenuW(menu, MF_STRING | (checking_update_ ? MF_GRAYED : 0), tray_check, L"Check for updates");
+    }
+    AppendMenuW(menu, MF_STRING | (autostart_enabled() ? MF_CHECKED : 0), tray_autostart, L"Start with Windows");
+    AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
+    AppendMenuW(menu, MF_STRING, tray_quit, L"Quit SAIAS");
+    SetMenuDefaultItem(menu, tray_open, FALSE);
+
+    SetForegroundWindow(window_);
+    const UINT command = TrackPopupMenuEx(menu, TPM_RETURNCMD | TPM_NONOTIFY | TPM_RIGHTBUTTON, at.x, at.y, window_, nullptr);
+    DestroyMenu(menu);
+    switch (command) {
+        case tray_open: show_window(); break;
+        case tray_web: ShellExecuteW(window_, L"open", hub_url, nullptr, nullptr, SW_SHOWNORMAL); break;
+        case tray_start: start_hub(); break;
+        case tray_stop: stop_hub(); break;
+        case tray_check: check_updates(); break;
+        case tray_update: run_update(); break;
+        case tray_autostart: set_autostart(!autostart_enabled()); break;
+        case tray_quit: quit(); break;
+    }
+}
+
+void Window::show_window() {
+    ShowWindow(window_, IsIconic(window_) ? SW_RESTORE : SW_SHOW);
+    SetForegroundWindow(window_);
+}
+
+// Quitting the app also stops the local models it manages.
+void Window::quit() {
+    quitting_ = true;
+    if (hub_status()) {
+        stop_hub();
+    }
+    DestroyWindow(window_);
+}
+
 } // namespace
 
-int WINAPI wWinMain(HINSTANCE application, HINSTANCE, PWSTR, int show) {
+int WINAPI wWinMain(HINSTANCE application, HINSTANCE, PWSTR command_line, int show) {
     SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
+    const bool tray_only = command_line && wcsstr(command_line, L"--tray");
+    // One SAIAS app per user session: a second launch brings the first one forward.
+    const HANDLE instance = CreateMutexW(nullptr, TRUE, L"Local\\SAIAS.App");
+    if (instance && GetLastError() == ERROR_ALREADY_EXISTS) {
+        if (const HWND existing = FindWindowW(window_class, nullptr); existing && !tray_only) {
+            PostMessageW(existing, show_request, 0, 0);
+        }
+        return 0;
+    }
     Window window(application);
-    if (!window.open(show)) {
-        MessageBoxW(nullptr, L"The SAIAS-LLM window could not be opened.", L"SAIAS-LLM", MB_ICONERROR);
+    if (!window.open(show, tray_only)) {
+        MessageBoxW(nullptr, L"The SAIAS window could not be opened.", L"SAIAS", MB_ICONERROR);
         return 1;
     }
     return window.run();

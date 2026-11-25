@@ -22,3 +22,5 @@
 *.log
 .env
 .env.*
+/dist/
+/build-release/
