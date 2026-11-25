@@ -17,107 +17,81 @@ struct GuideStep {
     std::wstring_view url;
 };
 
-inline constexpr auto hermes_windows_install =
-    L"iex (irm https://raw.githubusercontent.com/NousResearch/hermes-agent/main/scripts/install.ps1)";
-
-inline constexpr auto hermes_providers = LR"(providers:
-  saias-router:
-    name: SAIAS Flash
-    api: http://127.0.0.1:8082/v1
-    transport: chat_completions
-    discover_models: false
-    default_model: saias-flash
-    models:
-      saias-flash:
-        context_length: 262144
-  saias-bonsai:
-    name: SAIAS Smart (Bonsai 2 27B)
-    api: http://127.0.0.1:8080/v1
+// Same provider and MCP server that Install-SAIAS.cmd writes to the Hermes config.yaml.
+inline constexpr auto hermes_config = LR"(providers:
+  saias:
+    name: SAIAS (local)
+    api: http://127.0.0.1:8090/v1
     transport: chat_completions
     discover_models: false
     default_model: saias-smart
     models:
+      saias-flash:
+        context_length: 262144
       saias-smart:
         context_length: 200000
         supports_vision: true
-  saias-native:
-    name: SAIAS Pro
-    api: http://127.0.0.1:8081/v1
-    transport: chat_completions
-    discover_models: false
-    default_model: saias-pro
-    models:
       saias-pro:
         context_length: 500000
         supports_vision: true
+mcp_servers:
+  saias-web:
+    command: node
+    args:
+    - C:/path/to/saias-llm/mcp/saias-web.js
+    timeout: 120
 )";
 
-inline constexpr std::array<GuideStep, 5> hermes_guide{{
+inline constexpr std::array<GuideStep, 4> hermes_guide{{
     {
-        L"Install Hermes", L"Install Hermes Agent on Windows",
-        L"Open PowerShell and run the official Nous Research installer. If Hermes is already installed, "
-        L"go straight to the version check in a new PowerShell window.",
-        hermes_windows_install,
-        L"After installation, reopen PowerShell and run hermes --version. The next steps connect Hermes "
-        L"to your local models.",
-        L"Copy installer", hermes_windows_install,
-        L"Installation docs", L"https://hermes-agent.nousresearch.com/docs/user-guide/windows-native",
+        L"Install", L"Install SAIAS and Hermes",
+        L"Open PowerShell in the saias-llm folder and run the installer. It checks your hardware, downloads "
+        L"the runtimes and models for the recommended profiles, installs Node.js and Hermes Agent if they are "
+        L"missing, and adds the SAIAS provider and web search to Hermes.",
+        LR"(.\Install-SAIAS.cmd
+.\Install-SAIAS.cmd -Profiles flash,smart -Yes
+.\Install-SAIAS.cmd -Check)",
+        L"Running it again is safe: installed files are kept and interrupted downloads resume. -Check reports "
+        L"what is installed without changing anything.",
+        L"Copy command", LR"(.\Install-SAIAS.cmd)",
+        L"Quick start", L"https://github.com/saias-o/saias-llm#quick-start-windows",
     },
     {
-        L"Get model files", L"Get the SAIAS models you want to use",
-        L"Open SAIAS Downloads for the exact files. Use the PrismML runtime for Bonsai, "
-        L"the Vulkan runtime for Flash, and the Unsloth CUDA runtime for Pro.",
-        LR"(%LOCALAPPDATA%\Inkling2Mini
-  unsloth-vulkan\llama-server.exe
-  unsloth-cuda\llama-server.exe
-  models\LFM3-1.7B-Q4_K_M.gguf           saias-flash
-  models\Inkling-2-Mini-UD-Q4_K_XL.gguf saias-pro
-  models\mmproj-F16.gguf               saias-pro images
-  Inkling-2-Mini-direct.jinja
-  Inkling-2-Mini-reasoning.jinja
+        L"Start SAIAS", L"Start the SAIAS hub",
+        L"Run Start-SAIAS.cmd or double-click the SAIAS desktop shortcut. The hub serves Llama Chat and one "
+        L"OpenAI-compatible endpoint for saias-flash, saias-smart and saias-pro, and loads a model when it is "
+        L"first requested.",
+        LR"(.\Start-SAIAS.cmd
 
-%LOCALAPPDATA%\Bonsai2
-  bin\llama-server.exe
-  models\Ternary-Bonsai-2-27B-PTQ1_0.gguf
-  models\Ternary-Bonsai-2-27B-mmproj-Q8_0.gguf)",
-        L"Set SAIAS_BONSAI_HOME if Bonsai is installed in another folder. Check the Flash Vulkan "
-        L"device names in Saias-models.ini using llama-server.exe --list-devices.",
-        L"Copy install folder", LR"(%LOCALAPPDATA%\Inkling2Mini)",
-        L"SAIAS downloads", L"https://github.com/saias-o/saias-llm#downloads",
+Llama Chat   http://127.0.0.1:8090/
+Hermes API   http://127.0.0.1:8090/v1)",
+        L"Keep the hub window open while you use the models. Ctrl+C stops the hub and the model servers "
+        L"it started.",
+        L"Copy command", LR"(.\Start-SAIAS.cmd)",
+        L"Open Llama Chat", L"http://127.0.0.1:8090/",
     },
     {
-        L"Start SAIAS", L"Start the local model server",
-        L"Open PowerShell in the SAIAS project folder and run the command for your model.",
-        LR"(.\Launch-Inkling.cmd smart    http://127.0.0.1:8080/v1
-.\Launch-Inkling.cmd pro      http://127.0.0.1:8081/v1
-.\Launch-Inkling.cmd          http://127.0.0.1:8082/v1)",
-        L"Keep the server terminal open. To check a server, open its base URL with /models appended. "
-        L"For example, http://127.0.0.1:8080/v1/models should return a JSON model list.",
-        L"Copy Smart command", LR"(.\Launch-Inkling.cmd smart)",
-        L"SAIAS launch guide", L"https://github.com/saias-o/saias-llm#run-the-models",
-    },
-    {
-        L"Add providers", L"Add the SAIAS providers in Hermes",
-        L"Run the command below to open Hermes config.yaml. Use Copy provider YAML, paste the block as a "
-        L"top-level setting, and save. If providers already has entries, add or update "
-        L"saias-router, saias-bonsai, and saias-native under the existing providers key.",
+        L"Check Hermes", L"Check the SAIAS provider in Hermes",
+        L"Install-SAIAS.cmd adds this configuration for you. To set it up by hand, run the command below, "
+        L"paste the copied YAML as top-level settings, merge it with any existing providers and mcp_servers "
+        L"entries, and replace the path with your saias-llm folder.",
         L"hermes config edit",
-        L"Smart uses port 8080, Pro uses 8081, and Flash uses 8082. The copied YAML includes "
-        L"the model context limits and uses local, keyless connections.",
-        L"Copy provider YAML", hermes_providers,
+        L"All three profiles share port 8090, so Hermes needs a single saias provider. saias-web gives Hermes "
+        L"the same keyless web search, page reading and research tools as Llama Chat.",
+        L"Copy provider YAML", hermes_config,
         L"Provider docs", L"https://hermes-agent.nousresearch.com/docs/integrations/providers#named-custom-providers",
     },
     {
         L"Choose a model", L"Select a SAIAS model and start chatting",
-        L"Run hermes model, choose the SAIAS provider for your installed model, then run hermes chat "
-        L"and send a short message. To switch in an active chat, use one of these commands.",
-        LR"(/model custom:saias-router:saias-flash
-/model custom:saias-bonsai:saias-smart
-/model custom:saias-native:saias-pro)",
-        L"Hermes Desktop uses the same configuration. Open or restart it and choose a SAIAS model from "
-        L"the chat model menu. If a model cannot connect, check that its server is running and the "
-        L"model weights for that profile are installed.",
-        L"Copy model command", L"hermes model",
+        L"Run hermes chat and send a short message. To switch models in an active chat, use one of these "
+        L"commands.",
+        LR"(/model custom:saias:saias-flash
+/model custom:saias:saias-smart
+/model custom:saias:saias-pro)",
+        L"Hermes Desktop uses the same configuration: restart it and choose a SAIAS model from the chat model "
+        L"menu. If a model cannot connect, check that the hub is running and that its profile is installed "
+        L"(.\\Install-SAIAS.cmd -Check).",
+        L"Copy model command", L"/model custom:saias:saias-smart",
         L"Hermes Desktop docs", L"https://hermes-agent.nousresearch.com/docs/user-guide/desktop",
     },
 }};

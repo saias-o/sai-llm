@@ -598,7 +598,7 @@ void Window::open_step_docs() const {
     const auto url = saias::hermes_guide[step_].url;
     const auto result = ShellExecuteW(window_, L"open", url.data(), nullptr, nullptr, SW_SHOWNORMAL);
     if (reinterpret_cast<INT_PTR>(result) <= 32) {
-        MessageBoxW(window_, L"Windows could not open the documentation link.", L"Hermes Setup", MB_OK | MB_ICONERROR);
+        MessageBoxW(window_, L"Windows could not open the link.", L"Hermes Setup", MB_OK | MB_ICONERROR);
     }
 }
 
