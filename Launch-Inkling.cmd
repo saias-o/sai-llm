@@ -78,11 +78,15 @@ if not exist "%INKLING_PRESETS%" (
     echo Model presets missing: "%INKLING_PRESETS%"
     exit /b 1
 )
+rem Web tools for Llama Chat (MCP server run with Node.js). JSON needs forward slashes.
+set "SAI_WEB_MCP=%~dp0mcp\sai-web.js"
+set "SAI_WEB_MCP=%SAI_WEB_MCP:\=/%"
 pushd "%INKLING_HOME%" || exit /b 1
 echo sai-flash - http://127.0.0.1:%INKLING_PORT%
 echo Select a model in Hermes. Press Ctrl+C to stop the server.
 "%INKLING_ROUTER_SERVER%" --host 127.0.0.1 --port "%INKLING_PORT%" --cors-origins localhost ^
-    --models-preset "%INKLING_PRESETS%" --models-max 1
+    --models-preset "%INKLING_PRESETS%" --models-max 1 ^
+    --mcp-servers-json "{\"mcpServers\":{\"web\":{\"command\":\"node\",\"args\":[\"%SAI_WEB_MCP%\"],\"timeout_ms\":120000}}}"
 set "INKLING_EXIT=%errorlevel%"
 popd
 exit /b %INKLING_EXIT%
