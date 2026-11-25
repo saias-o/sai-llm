@@ -56,4 +56,18 @@ async function configure({ models }) {
   ui.info(`Use it with: codex --profile saias   (model ${best.id}; change it with -m saias-smart)`);
 }
 
-module.exports = { id: 'codex', name: 'Codex', detect, configure, withoutSaiasTables };
+// Uninstall: takes the SAIAS tables out again. True when something was removed.
+function remove() {
+  if (!fs.existsSync(CONFIG)) return false;
+  const original = fs.readFileSync(CONFIG, 'utf8');
+  if (!/^\s*\[(model_providers|profiles)\.saias\]\s*$/m.test(original)) return false;
+  backup(CONFIG);
+  fs.writeFileSync(CONFIG, withoutSaiasTables(original) + '\n');
+  return true;
+}
+
+function configured() {
+  try { return /^\s*\[(model_providers|profiles)\.saias\]\s*$/m.test(fs.readFileSync(CONFIG, 'utf8')); } catch { return false; }
+}
+
+module.exports = { id: 'codex', name: 'Codex', detect, configure, remove, configured, withoutSaiasTables };

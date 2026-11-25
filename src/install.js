@@ -188,6 +188,8 @@ async function finish(opts) {
   if (!opts.noApp) await require('./app').ensure();
   if (!opts.noPath) await require('./integrations/path').add({ yes: opts.yes });
   if (!opts.noShortcut) require('./integrations/shortcut').create();
+  // Settings > Apps > Installed apps (with Uninstall) and the Start menu.
+  if (!opts.noRegister) require('./integrations/windows-entry').register({ exe: require('./app').exe() });
   if (!opts.noBench && (await ui.confirm('Measure how fast each model runs on this PC now? It loads each model in turn (a few minutes).', true, opts.yes))) {
     await require('./bench').run({});
   }

@@ -60,11 +60,7 @@
     display: flex; align-items: center; gap: 12px;
     padding: 14px 28px 10px;
   }
-  .mark {
-    width: 34px; height: 34px; border-radius: 9px;
-    background: var(--accent); color: var(--accent-ink);
-    display: grid; place-items: center; font-weight: 700; font-size: 15px; letter-spacing: .5px;
-  }
+  .mark { width: 34px; height: 34px; display: block; }
   header h1 { font-size: 18px; margin: 0; font-weight: 600; }
   header > div:nth-child(2) { min-width: 0; }
   header .sub { color: var(--muted); font-size: 12.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -194,7 +190,7 @@
 </head>
 <body>
 <header>
-  <div class="mark">S</div>
+  <img class="mark" src="/icon" alt="">
   <div>
     <h1>SAIAS Setup</h1>
     <div class="sub" id="subtitle">Local AI models for this PC</div>
@@ -458,7 +454,7 @@ function renderChoose() {
   $('toolsSection').hidden = !plan.tools.length;
 
   const opts = [];
-  if (plan.options.shortcut) opts.push(checkRow('opt-shortcut', 'Desktop shortcut', 'Starts SAIAS and opens Llama Chat.', true));
+  if (plan.options.shortcut) opts.push(checkRow('opt-shortcut', 'Desktop shortcut', 'Opens the SAIAS app.', true));
   if (plan.options.path) opts.push(checkRow('opt-path', 'Add "saias" to the PATH', 'Use the saias command in any new terminal.', true));
   if (plan.options.bench) opts.push(checkRow('opt-bench', 'Measure the speed after installing', 'Loads each model in turn; can take several minutes.', false));
   $('options').replaceChildren(...opts);
@@ -486,6 +482,7 @@ function downloadBytes(profiles) {
 
 function refresh() {
   if (state !== 'choose') return;
+  $('subtitle').textContent = `Catalog ${plan.catalogVersion} · data folder ${folder ? folder.path : plan.home}`;
   const chosen = selectedProfiles();
   const licenses = new Map();
   for (const p of chosen) licenses.set(p.model, p.license);
@@ -606,7 +603,7 @@ function finish(ok, message) {
     el('div', { class: 'big ' + (ok ? 'ok' : 'bad') }, svg(ok ? icon.ok : icon.bad)),
     el('h3', {}, ok ? 'SAIAS is ready' : 'The installation stopped'),
     ok
-      ? el('p', {}, `Installed: ${names}. Start SAIAS to chat in Llama Chat; tools such as Hermes use `, el('code', {}, 'http://127.0.0.1:8090/v1'), '.')
+      ? el('p', {}, `Installed: ${names}. Start SAIAS to chat, or open it later from the desktop or the Start menu. Tools such as Hermes use `, el('code', {}, 'http://127.0.0.1:8090/v1'), '.')
       : el('p', {}, message || 'An error occurred.', el('br'), 'Downloaded files are kept: running the setup again resumes where it stopped.'),
   );
   $('finalLog').replaceChildren(...[...$('log').childNodes].map(n => n.cloneNode(true)));

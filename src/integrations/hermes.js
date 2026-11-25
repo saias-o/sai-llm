@@ -5,11 +5,11 @@
 
 const fs = require('node:fs');
 const path = require('node:path');
-const { execFileSync } = require('node:child_process');
+const { execFileSync, spawnSync } = require('node:child_process');
 const paths = require('../paths');
 const ui = require('../ui');
 const { HUB_URL } = require('../installed');
-const { which } = require('./util');
+const { which, runShim } = require('./util');
 
 const HUB = `${HUB_URL}/v1`;
 
@@ -36,10 +36,60 @@ with open(path, "w", encoding="utf-8") as f:
     yaml.safe_dump(cfg, f, sort_keys=True, allow_unicode=True, default_flow_style=False)
 `;
 
+// Uninstall: removes what MERGE added; the default model too when it is a SAIAS one.
+const REMOVE = String.raw`
+import datetime, os, shutil, sys
+import yaml
+
+path = sys.argv[1]
+if not os.path.exists(path):
+    print("unchanged"); sys.exit(0)
+with open(path, encoding="utf-8") as f:
+    cfg = yaml.safe_load(f) or {}
+changed = False
+providers = cfg.get("providers") or {}
+if "saias" in providers:
+    del providers["saias"]; changed = True
+    if providers: cfg["providers"] = providers
+    else: cfg.pop("providers", None)
+servers = cfg.get("mcp_servers") or {}
+if "saias-web" in servers:
+    del servers["saias-web"]; changed = True
+    if servers: cfg["mcp_servers"] = servers
+    else: cfg.pop("mcp_servers", None)
+model = cfg.get("model")
+if isinstance(model, dict) and model.get("provider") == "custom:saias":
+    cfg.pop("model"); changed = True
+if changed:
+    shutil.copy2(path, path + ".bak-saias-" + datetime.datetime.now().strftime("%Y%m%d-%H%M%S"))
+    with open(path, "w", encoding="utf-8") as f:
+        yaml.safe_dump(cfg, f, sort_keys=True, allow_unicode=True, default_flow_style=False)
+print("removed" if changed else "unchanged")
+`;
+
+// A Python that can edit the YAML config, as { exe, env }: Hermes' own (it ships PyYAML) first.
 function hermesPython(hermes) {
+  const candidates = [];
+  const add = (exe, sitePackages) => exe && candidates.push({ exe, env: sitePackages ? { PYTHONPATH: sitePackages } : {} });
   const venv = process.platform === 'win32' ? ['hermes-agent', 'venv', 'Scripts', 'python.exe'] : ['hermes-agent', 'venv', 'bin', 'python'];
-  const candidates = [path.join(path.dirname(path.dirname(hermes)), ...venv), which('python3'), which('python')];
-  return candidates.find(p => p && fs.existsSync(p)) || null;
+  add(path.join(path.dirname(path.dirname(hermes)), ...venv));
+  // Hermes Desktop: hermes.cmd starts a bundled Python, and the agent's packages are in
+  // agent-payload\venv (whose own python.exe points to the machine Hermes was built on).
+  try {
+    const script = fs.readFileSync(hermes, 'utf8');
+    const bundled = script.match(/"([^"]+python\.exe)"/i);
+    const payload = script.match(/"([^"]*?[\\/]agent-payload)[\\/]/i);
+    if (bundled && payload) add(bundled[1], path.join(payload[1], 'venv', 'Lib', 'site-packages'));
+  } catch { /* not a script */ }
+  add(which('python3'));
+  add(which('python'));
+  const works = c => fs.existsSync(c.exe) && spawnSync(c.exe, ['-c', 'import yaml'],
+    { stdio: 'ignore', windowsHide: true, timeout: 20000, env: { ...process.env, ...c.env } }).status === 0;
+  return candidates.find(works) || null;
+}
+
+function runPython(python, args, options = {}) {
+  return execFileSync(python.exe, args, { windowsHide: true, ...options, env: { ...process.env, ...python.env } });
 }
 
 function installHermes() {
@@ -66,7 +116,7 @@ async function configure({ models, yes }) {
     hermes = which('hermes');
   }
   if (!hermes) { ui.todo('Hermes not found; run the installer again after installing Hermes.'); return; }
-  const configPath = execFileSync(hermes, ['config', 'path'], { encoding: 'utf8', windowsHide: true }).trim().split(/\r?\n/).pop();
+  const configPath = hermesConfigPath(hermes);
   const python = hermesPython(hermes);
   if (!configPath || !python) { ui.bad('Hermes configuration not found; add the provider by hand (see README).'); return; }
 
@@ -84,7 +134,7 @@ async function configure({ models, yes }) {
   fs.mkdirSync(paths.home, { recursive: true });
   fs.writeFileSync(script, MERGE);
   try {
-    execFileSync(python, [script, configPath, JSON.stringify(spec)], { stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true });
+    runPython(python, [script, configPath, JSON.stringify(spec)], { stdio: ['ignore', 'pipe', 'pipe'] });
   } catch (e) {
     ui.bad(`Hermes configuration failed: ${String(e.stderr || e.message).trim()}`);
     return;
@@ -93,4 +143,33 @@ async function configure({ models, yes }) {
   if (setDefault) ui.ok(`Default Hermes model: custom:saias / ${defaultModel}`);
 }
 
-module.exports = { id: 'hermes', name: 'Hermes Agent', detect, configure };
+function hermesConfigPath(hermes) {
+  try {
+    return runShim(hermes, ['config', 'path'], { encoding: 'utf8', windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] }).trim().split(/\r?\n/).pop();
+  } catch {
+    return null;
+  }
+}
+
+function configured() {
+  const hermes = which('hermes');
+  const file = hermes && hermesConfigPath(hermes);
+  try { return Boolean(file) && /\bsaias(-web)?:/.test(fs.readFileSync(file, 'utf8')); } catch { return false; }
+}
+
+// Uninstall: takes the SAIAS provider and web tools out of the Hermes config. Hermes stays.
+function remove() {
+  const hermes = which('hermes');
+  const file = hermes && hermesConfigPath(hermes);
+  const python = hermes && hermesPython(hermes);
+  if (!file || !python) return false;
+  const script = path.join(require('node:os').tmpdir(), `saias-hermes-remove-${process.pid}.py`);
+  fs.writeFileSync(script, REMOVE);
+  try {
+    return String(runPython(python, [script, file], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] })).trim().endsWith('removed');
+  } finally {
+    fs.rmSync(script, { force: true });
+  }
+}
+
+module.exports = { id: 'hermes', name: 'Hermes Agent', detect, configure, remove, configured };

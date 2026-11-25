@@ -51,4 +51,24 @@ async function configure({ models, yes }) {
   ui.info(`In OpenCode, pick a model with /models, for example saias/${best.id}.`);
 }
 
-module.exports = { id: 'opencode', name: 'OpenCode', detect, configure };
+function read() {
+  try { return JSON.parse(fs.readFileSync(CONFIG, 'utf8')); } catch { return null; }
+}
+
+function configured() {
+  return Boolean(read()?.provider?.saias);
+}
+
+// Uninstall: removes the saias provider, and the default model when it was a SAIAS one.
+function remove() {
+  const config = read();
+  if (!config?.provider?.saias) return false;
+  delete config.provider.saias;
+  if (!Object.keys(config.provider).length) delete config.provider;
+  if (String(config.model || '').startsWith('saias/')) delete config.model;
+  backup(CONFIG);
+  fs.writeFileSync(CONFIG, JSON.stringify(config, null, 2) + '\n');
+  return true;
+}
+
+module.exports = { id: 'opencode', name: 'OpenCode', detect, configure, remove, configured };

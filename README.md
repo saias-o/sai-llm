@@ -22,8 +22,10 @@ This repository, saias-llm, contains the installer, the model catalog, the SAIAS
 **From the source.**
 
 1. Clone this repository, or download it as a ZIP and extract it.
-2. Run `Install-SAIAS.cmd`. It installs a private copy of Node.js if needed and opens the **setup window**. The advisor reads your hardware and preselects only the profiles this PC can run (on a laptop with 8 GB of RAM and no large NVIDIA GPU: `saias-flash` and `saias-smart`), so nothing it cannot use is downloaded. If the data folder's drive is too small, it suggests another drive. After you accept the licenses, the setup downloads and verifies the runtimes and models, sets up web search, and connects Hermes Agent and the coding tools it finds (OpenCode, Codex, Claude Code). It can also put `saias` on your PATH and create a **SAIAS** desktop shortcut. Running it again is safe: verified files are kept and interrupted downloads resume. `Install-SAIAS.cmd --console` runs the same installer in the terminal.
-3. Run `Start-SAIAS.cmd` or the **SAIAS** shortcut. It opens [Llama Chat](http://127.0.0.1:8090/) with every installed profile and the web tools. Hermes and the coding tools use the same server at `http://127.0.0.1:8090`.
+2. Run `Install-SAIAS.cmd`. It installs a private copy of Node.js if needed and opens the **setup window**. The advisor reads your hardware and preselects only the profiles this PC can run (on a laptop with 8 GB of RAM and no large NVIDIA GPU: `saias-flash` and `saias-smart`), so nothing it cannot use is downloaded. If the data folder's drive is too small, it suggests another drive. After you accept the licenses, the setup downloads and verifies the runtimes and models, sets up web search, and connects Hermes Agent and the coding tools it finds (OpenCode, Codex, Claude Code). It can also put `saias` on your PATH and create a **SAIAS** desktop shortcut. It downloads the SAIAS app (built by GitHub Actions on the `app` release), adds SAIAS to the Start menu and lists it in **Settings > Apps > Installed apps**. Running it again is safe: verified files are kept and interrupted downloads resume. `Install-SAIAS.cmd --console` runs the same installer in the terminal.
+3. Open **SAIAS** from the desktop or the Start menu. Its **Chat** view is SAIAS Chat: conversations, web tools, reasoning, a context gauge and attachments, also available in a browser at http://127.0.0.1:8090/saias/chat/. `Start-SAIAS.cmd` opens [Llama Chat](http://127.0.0.1:8090/) instead. Hermes and the coding tools use the same server at `http://127.0.0.1:8090`.
+
+**Uninstall.** In **Settings > Apps > Installed apps**, choose SAIAS > Uninstall, or run `Uninstall-SAIAS.cmd`. The uninstall window lists what it removes: the models, runtimes and logs, the conversations (unless you keep them), the app, the shortcuts, the PATH entry and the SAIAS settings in Hermes, Codex and OpenCode (a `.bak-saias-*` copy of each file is kept). The program folder stays, since it holds the code.
 
 Already have model files or llama.cpp builds on disk? Run `saias adopt <folder>` before installing so they are reused instead of downloaded.
 
@@ -70,6 +72,8 @@ SAIAS builds on the same llama.cpp engine. Ollama, LM Studio and Jan are better 
 | `saias status` | Shows the hardware, the installed profiles, their measured speed and the hub state. `--json` for scripts. |
 | `saias recommend` | Shows which profile suits this PC best, from the catalog and measured speeds. `--json` for scripts. |
 | `saias clean` | Deletes files no installed or previous profile uses. |
+| `saias move <folder>` | Moves the models and the rest of the data folder, for example to another drive. |
+| `saias uninstall` | Removes SAIAS from this PC in a window. `--console` runs it in the terminal, with `--check`, `--yes` and `--keep-conversations`. |
 
 ## How SAIAS works
 

@@ -27,4 +27,15 @@ function quoteForCmd(arg) {
   return /^[\w\-./:=@\\]+$/.test(arg) ? arg : `"${String(arg).replace(/"/g, '""')}"`;
 }
 
-module.exports = { which, backup, quoteForCmd };
+// Runs a command found with which(). Node refuses to start .cmd and .bat shims directly since the
+// fix for CVE-2024-27980 (spawn EINVAL): those go through cmd.exe.
+function runShim(file, args, options = {}) {
+  const { execFileSync } = require('node:child_process');
+  if (process.platform === 'win32' && /\.(cmd|bat)$/i.test(file)) {
+    const line = [file, ...args].map(quoteForCmd).join(' ');
+    return execFileSync(process.env.ComSpec || 'cmd.exe', ['/d', '/s', '/c', `"${line}"`], { ...options, windowsVerbatimArguments: true });
+  }
+  return execFileSync(file, args, options);
+}
+
+module.exports = { which, backup, quoteForCmd, runShim };

@@ -24,6 +24,8 @@ Setup
   move <folder>      Move the models and the rest of the data folder, for example to another drive
   app                Download or update the native SAIAS app for Windows (--open starts it)
   clean              Delete files no profile uses any more (--yes)
+  uninstall          Remove SAIAS from this PC in a window: models, data, shortcuts, tool settings
+                     (--console in the terminal, with --check --yes --keep-conversations)
 
 Run
   start              Start the hub: Llama Chat and the local API on port 8090 (--open)
@@ -78,6 +80,7 @@ async function main() {
       return;
     }
     case 'setup': return require('./setup').run(opts);
+    case 'uninstall': return require('./setup').run({ ...opts, uninstall: true });
     case 'connect': return require('./integrations').connect(opts._, { yes: opts.yes });
     case 'claude': return require('./integrations/claude').launch(rest);
     case 'start': return require('./hub').start({ open: Boolean(opts.open) });

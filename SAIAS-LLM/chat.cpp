@@ -552,7 +552,7 @@ std::wstring launch_backend(const Backend& backend, ProcessHandle& process) {
         return L"Could not locate the Windows command processor.";
     }
     const auto executable = std::filesystem::path(system.data()) / L"cmd.exe";
-    std::wstring command = L"cmd.exe /d /c saias.cmd start";
+    std::wstring command = L"cmd.exe /d /s /c \"\"" + (backend.project / L"saias.cmd").wstring() + L"\" start\"";
     STARTUPINFOW startup{};
     startup.cb = sizeof(startup);
     PROCESS_INFORMATION information{};

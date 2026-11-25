@@ -20,9 +20,11 @@ const { resolveAll, recommended, filesFor } = require('./resolve');
 const { recommendations } = require('./recommend');
 
 const PAGE = path.join(__dirname, 'setup.html');
+const UNINSTALL_PAGE = path.join(__dirname, 'uninstall.html');
 const IDLE_EXIT_MS = 2 * 60 * 1000;
 const KEEP_FREE_BYTES = 5e9;      // room left on the drive after the downloads
 const WINDOW = { width: 960, height: 780 };
+const UNINSTALL_WINDOW = { width: 720, height: 640 };
 
 // ---------------------------------------------------------------- what the page shows
 
@@ -131,9 +133,12 @@ function plan(opts) {
   const fresh = !Object.keys(state.profiles).length;
   let suggested = null;
   // "Fits" keeps KEEP_FREE_BYTES free afterwards: filling the Windows drive breaks the PC.
-  const fits = f => f.free === null || f.free >= need * 1.1 + KEEP_FREE_BYTES;
-  if (fresh && !process.env.SAIAS_HOME && !fits(folders[0])) {
-    const roomy = folders.slice(1).filter(fits).sort((a, b) => b.free - a.free)[0];
+  // When no drive has that much room, the roomiest one that still fits (1 GB left) is next best.
+  const fits = (f, keep) => f.free === null || f.free >= need * 1.1 + keep;
+  if (fresh && !process.env.SAIAS_HOME && !fits(folders[0], KEEP_FREE_BYTES)) {
+    const others = folders.slice(1).sort((a, b) => b.free - a.free);
+    const roomy = others.find(f => fits(f, KEEP_FREE_BYTES))
+      || (others[0] && fits(others[0], 1e9) && others[0].free > (folders[0].free || 0) ? others[0] : null);
     if (roomy) suggested = roomy.path;
   }
 
@@ -264,10 +269,10 @@ function workArea() {
 }
 
 // Window size and position: the preferred size, shrunk to fit the screen, centered.
-function windowBounds(area = workArea()) {
-  if (!area) return [`--window-size=${WINDOW.width},${WINDOW.height}`];
-  const width = Math.min(WINDOW.width, area.width - 40);
-  const height = Math.min(WINDOW.height, area.height - 40);
+function windowBounds(area = workArea(), size = WINDOW) {
+  if (!area) return [`--window-size=${size.width},${size.height}`];
+  const width = Math.min(size.width, area.width - 40);
+  const height = Math.min(size.height, area.height - 40);
   const x = area.x + Math.round((area.width - width) / 2);
   const y = area.y + Math.round((area.height - height) / 2);
   return [`--window-size=${width},${height}`, `--window-position=${x},${y}`];
@@ -275,12 +280,12 @@ function windowBounds(area = workArea()) {
 
 // Opens the page in its own window and calls onClose when that window is closed. A private
 // browser profile makes the window its own process, so closing it ends that process.
-function openWindow(url, onClose) {
+function openWindow(url, onClose, size = WINDOW) {
   const exe = appBrowser();
   if (!exe) { openDefaultBrowser(url); return null; }
   const profile = fs.mkdtempSync(path.join(os.tmpdir(), 'saias-setup-'));
   const proc = spawn(exe, [
-    `--app=${url}`, `--user-data-dir=${profile}`, ...windowBounds(),
+    `--app=${url}`, `--user-data-dir=${profile}`, ...windowBounds(workArea(), size),
     '--no-first-run', '--no-default-browser-check', '--disable-sync', '--disable-features=Translate,msEdgeSidebarV2',
   ], { stdio: 'ignore' });
   proc.on('error', () => openDefaultBrowser(url));
@@ -299,8 +304,13 @@ function closeWindow(proc) {
   } catch { /* already closed */ }
 }
 
-// Starts SAIAS in its own console, the way Start-SAIAS.cmd does.
+// Opens the SAIAS app; without it, starts SAIAS in its own console like Start-SAIAS.cmd.
 function startSaias() {
+  const app = require('./app').exe();
+  if (app) {
+    spawn(app, [], { cwd: path.dirname(app), detached: true, stdio: 'ignore' }).unref();
+    return;
+  }
   if (process.platform === 'win32') {
     spawn('cmd.exe', ['/d', '/c', 'start', '"SAIAS"', path.join(paths.ROOT, 'Start-SAIAS.cmd')], { cwd: paths.ROOT, detached: true, stdio: 'ignore', windowsHide: true }).unref();
   } else {
@@ -327,7 +337,8 @@ function sendJson(res, status, value) {
 async function run(opts) {
   const headless = process.platform === 'linux' && !process.env.DISPLAY && !process.env.WAYLAND_DISPLAY;
   if (opts.console || headless) {
-    if (headless && !opts.console) ui.info('No display found: running the installer in the terminal.');
+    if (headless && !opts.console) ui.info(`No display found: running the ${opts.uninstall ? 'uninstaller' : 'installer'} in the terminal.`);
+    if (opts.uninstall) return consoleUninstall(opts);
     await manage.install(opts);
     if (!opts.check) await manage.finish(opts);
     return;
@@ -388,11 +399,38 @@ async function run(opts) {
     }
   }
 
+  // The same window and progress channel remove SAIAS.
+  async function uninstall(choice) {
+    installing = true;
+    channel.reset();
+    ui.setReporter(channel.reporter);
+    try {
+      await require('./uninstall').run({ keepConversations: Boolean(choice.keepConversations) });
+      finished = true;
+      failed = false;
+      channel.send({ type: 'done' });
+    } catch (e) {
+      failed = true;
+      channel.send({ type: 'error', text: e.message });
+    } finally {
+      ui.setReporter(null);
+      installing = false;
+      if (!windowProc || windowProc.exitCode !== null) {
+        if (!channel.clients.size) quit();
+      }
+    }
+  }
+
   async function handle(req, res) {
     const url = new URL(req.url, 'http://127.0.0.1');
     if (req.method === 'GET' && (url.pathname === '/' || url.pathname === '/index.html')) {
       res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store', 'X-Frame-Options': 'DENY' });
-      res.end(fs.readFileSync(PAGE));
+      res.end(fs.readFileSync(opts.uninstall ? UNINSTALL_PAGE : PAGE));
+      return;
+    }
+    if (req.method === 'GET' && url.pathname === '/icon') {
+      res.writeHead(200, { 'Content-Type': 'image/x-icon', 'Cache-Control': 'max-age=3600' });
+      res.end(fs.readFileSync(path.join(paths.ROOT, 'SAIAS-LLM', 'saias-llm.ico')));
       return;
     }
     // Everything else needs the token from the URL the window was opened with, so other
@@ -401,6 +439,14 @@ async function run(opts) {
     if (given !== token) { sendJson(res, 403, { error: 'forbidden' }); return; }
 
     if (req.method === 'GET' && url.pathname === '/api/plan') { sendJson(res, 200, plan(opts)); return; }
+    if (req.method === 'GET' && url.pathname === '/api/uninstall-plan') { sendJson(res, 200, require('./uninstall').plan()); return; }
+    if (req.method === 'POST' && url.pathname === '/api/uninstall') {
+      if (installing) { sendJson(res, 409, { error: 'Already running.' }); return; }
+      const choice = await readJson(req);
+      sendJson(res, 202, { started: true });
+      uninstall(choice);
+      return;
+    }
     if (req.method === 'GET' && url.pathname === '/api/events') { channel.attach(req, res); return; }
     if (req.method === 'POST' && url.pathname === '/api/install') {
       if (installing) { sendJson(res, 409, { error: 'An installation is already running.' }); return; }
@@ -438,14 +484,14 @@ async function run(opts) {
   await new Promise((resolve, reject) => { server.once('error', reject); server.listen(0, '127.0.0.1', resolve); });
   const pageUrl = `http://127.0.0.1:${server.address().port}/?t=${token}`;
 
-  ui.step('SAIAS setup');
-  ui.info('The setup window is open. Keep this console open until it finishes.');
+  ui.step(opts.uninstall ? 'SAIAS uninstall' : 'SAIAS setup');
+  ui.info(`The ${opts.uninstall ? 'uninstall' : 'setup'} window is open. Keep this console open until it finishes.`);
   ui.info(`If no window appeared, open ${pageUrl}`);
 
   windowProc = opts.noWindow ? null : openWindow(pageUrl, () => {
-    if (installing) ui.info('The setup window was closed; the installation continues here.');
+    if (installing) ui.info('The window was closed; the work continues here.');
     else quit();
-  });
+  }, opts.uninstall ? UNINSTALL_WINDOW : WINDOW);
   if (!windowProc && !opts.noWindow) openDefaultBrowser(pageUrl);
 
   // Without an app window, stop once no page has been connected for a while.
@@ -461,6 +507,18 @@ async function run(opts) {
 
   await exited;
   if (finished) ui.ok('SAIAS is installed.');
+}
+
+// saias uninstall --console [--check] [--yes] [--keep-conversations]
+async function consoleUninstall(opts) {
+  const removal = require('./uninstall');
+  const p = removal.plan();
+  ui.step('SAIAS uninstall');
+  if (!p.items.length) { ui.ok('Nothing of SAIAS is installed on this PC.'); return; }
+  for (const item of p.items) ui.info(`${item.label}${item.bytes ? ` (${ui.size(item.bytes)})` : ''}: ${item.detail}`);
+  if (opts.check) return;
+  if (!(await ui.confirm('Remove all of this?', false, opts.yes))) { ui.info('Nothing was removed.'); return; }
+  await removal.run({ keepConversations: Boolean(opts.keepConversations) });
 }
 
 module.exports = { run, plan, windowBounds };

@@ -58,7 +58,10 @@ Captured run_capture(std::wstring_view arguments, DWORD timeout_ms) {
     startup.hStdOutput = write_raw;
     startup.hStdError = GetStdHandle(STD_ERROR_HANDLE);
     startup.hStdInput = nullptr;
-    std::wstring command = L"cmd.exe /d /s /c \"saias.cmd " + std::wstring(arguments) + L"\"";
+    // The full path: cmd.exe does not look in the current folder when
+    // NoDefaultCurrentDirectoryInExePath is set.
+    std::wstring command = L"cmd.exe /d /s /c \"\"" + (project / L"saias.cmd").wstring() + L"\" "
+        + std::wstring(arguments) + L"\"";
     PROCESS_INFORMATION process{};
     if (!CreateProcessW(command_processor().c_str(), command.data(), nullptr, nullptr, TRUE, CREATE_NO_WINDOW,
             nullptr, project.c_str(), &startup, &process)) {
@@ -92,7 +95,7 @@ HANDLE launch(std::wstring_view arguments, bool console) {
     if (project.empty()) {
         return nullptr;
     }
-    std::wstring command = L"cmd.exe /d /s /c \"saias.cmd " + std::wstring(arguments)
+    std::wstring command = L"cmd.exe /d /s /c \"\"" + (project / L"saias.cmd").wstring() + L"\" " + std::wstring(arguments)
         + (console ? L" & echo. & pause\"" : L"\"");
     STARTUPINFOW startup{};
     startup.cb = sizeof(startup);

@@ -1,0 +1,184 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Uninstall SAIAS</title>
+<style>
+  :root {
+    --bg: #f6f7f9; --panel: #ffffff; --panel-2: #f1f3f6; --text: #1b1f24; --muted: #5d6673; --faint: #8a93a0;
+    --border: #e1e5ea; --accent: #c23934; --accent-ink: #ffffff; --ok: #1f8a4c; --ok-soft: #e3f4ea;
+    --bad: #c23934; --bad-soft: #fbe6e5; --shadow: 0 1px 2px rgba(16, 24, 40, .05), 0 1px 3px rgba(16, 24, 40, .06);
+    color-scheme: light;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #111418; --panel: #181c21; --panel-2: #1f242a; --text: #e7eaee; --muted: #a3acb8; --faint: #76808c;
+      --border: #2b3139; --accent: #f07b76; --accent-ink: #1b0a09; --ok: #4cc283; --ok-soft: #173126;
+      --bad: #f07b76; --bad-soft: #3d1f1e; --shadow: none; color-scheme: dark;
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; }
+  body { background: var(--bg); color: var(--text); font: 14px/1.5 "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif; display: flex; flex-direction: column; }
+  header { display: flex; align-items: center; gap: 12px; padding: 16px 28px 8px; }
+  header img { width: 32px; height: 32px; }
+  header h1 { font-size: 18px; margin: 0; font-weight: 600; }
+  header .sub { color: var(--muted); font-size: 12.5px; }
+  main { flex: 1; overflow-y: auto; padding: 8px 28px 20px; }
+  .panel { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; box-shadow: var(--shadow); }
+  h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 14px 0 8px; font-weight: 600; }
+  .items { padding: 2px 0; }
+  .item { display: flex; gap: 12px; padding: 10px 16px; border-top: 1px solid var(--border); }
+  .item:first-child { border-top: 0; }
+  .item .what { flex: 1; min-width: 0; }
+  .item .detail { display: block; color: var(--faint); font-size: 12.5px; word-break: break-all; }
+  .item .size { color: var(--muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
+  .note { color: var(--muted); font-size: 13px; margin: 12px 2px 0; }
+  .keep { display: flex; gap: 10px; align-items: center; padding: 12px 16px; cursor: pointer; }
+  .keep input { width: 16px; height: 16px; accent-color: var(--accent); }
+  .log { padding: 10px 16px; font-size: 13px; max-height: 380px; overflow-y: auto; }
+  .log div { padding: 1px 0; }
+  .log .step { font-weight: 600; margin-top: 8px; }
+  .log .step:first-child { margin-top: 0; }
+  .log .ok::before { content: "\2713  "; color: var(--ok); }
+  .log .bad, .log .error { color: var(--bad); }
+  .log .info { color: var(--muted); }
+  .result { text-align: center; padding: 26px 20px 20px; }
+  .result .big { width: 52px; height: 52px; border-radius: 50%; display: grid; place-items: center; margin: 0 auto 12px; font-size: 26px; }
+  .result .big.ok { background: var(--ok-soft); color: var(--ok); }
+  .result .big.bad { background: var(--bad-soft); color: var(--bad); }
+  .result h3 { margin: 0 0 6px; font-size: 18px; }
+  .result p { margin: 0 auto; color: var(--muted); max-width: 520px; word-break: break-word; }
+  footer { border-top: 1px solid var(--border); background: var(--panel); padding: 12px 28px; display: flex; align-items: center; gap: 12px; }
+  footer .summary { color: var(--muted); font-size: 13px; }
+  footer .actions { margin-left: auto; display: flex; gap: 8px; }
+  button { font: inherit; font-weight: 600; border-radius: 8px; padding: 8px 18px; cursor: pointer; border: 1px solid var(--border); background: var(--panel); color: var(--text); }
+  button.danger { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+  button:disabled { opacity: .45; cursor: not-allowed; }
+  .center { min-height: 50vh; display: grid; place-items: center; color: var(--muted); text-align: center; }
+  .spinner { width: 24px; height: 24px; border-radius: 50%; border: 3px solid var(--border); border-top-color: var(--muted); animation: spin .9s linear infinite; margin: 0 auto 10px; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  [hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<header>
+  <img src="/icon" alt="">
+  <div><h1>Uninstall SAIAS</h1><div class="sub" id="sub">Remove SAIAS from this PC</div></div>
+</header>
+<main>
+  <div id="loading" class="center"><div><div class="spinner"></div>Looking for what SAIAS installed…</div></div>
+  <div id="confirm" hidden>
+    <h2>This removes</h2>
+    <div class="panel items" id="items"></div>
+    <div class="panel" style="margin-top:12px">
+      <label class="keep" id="keep-row"><input type="checkbox" id="keep"> Keep my conversations and chat settings</label>
+    </div>
+    <p class="note" id="note"></p>
+  </div>
+  <div id="working" hidden>
+    <h2>Uninstalling</h2>
+    <div class="panel log" id="log"></div>
+  </div>
+  <div id="done" hidden>
+    <div class="panel result" id="result"></div>
+    <h2>Details</h2>
+    <div class="panel log" id="final-log"></div>
+  </div>
+</main>
+<footer>
+  <span class="summary" id="summary"></span>
+  <div class="actions" id="actions"></div>
+</footer>
+<script>
+'use strict';
+const token = new URLSearchParams(location.search).get('t') || '';
+const $ = id => document.getElementById(id);
+const size = b => (b >= 1e9 ? (b / 1e9).toFixed(1) + ' GB' : b >= 1e6 ? Math.round(b / 1e6) + ' MB' : b > 0 ? '< 1 MB' : '');
+let state = 'confirm';
+
+function show(id) { for (const v of ['loading', 'confirm', 'working', 'done']) $(v).hidden = v !== id; }
+function el(tag, cls, text) { const n = document.createElement(tag); if (cls) n.className = cls; if (text !== undefined) n.textContent = text; return n; }
+function button(label, cls, onClick) { const b = el('button', cls, label); b.type = 'button'; b.addEventListener('click', onClick); return b; }
+
+async function api(path, body) {
+  const res = await fetch(path, { method: body ? 'POST' : 'GET', headers: { 'X-SAIAS-Setup': token, ...(body ? { 'Content-Type': 'application/json' } : {}) }, body: body ? JSON.stringify(body) : undefined });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+  return data;
+}
+
+async function load() {
+  let plan;
+  try { plan = await api('/api/uninstall-plan'); } catch (e) { $('loading').textContent = 'Could not read the installation: ' + e.message; return; }
+  const items = $('items');
+  items.innerHTML = '';
+  if (!plan.items.length) {
+    show('done');
+    $('result').append(el('div', 'big ok', '✓'), el('h3', null, 'SAIAS is not installed'), el('p', null, 'There is nothing to remove on this PC.'));
+    $('final-log').parentElement.hidden = true;
+    $('actions').replaceChildren(button('Close', '', close));
+    return;
+  }
+  for (const item of plan.items) {
+    const row = el('div', 'item');
+    const what = el('div', 'what', item.label);
+    what.append(el('span', 'detail', item.detail));
+    row.append(what, el('span', 'size', size(item.bytes)));
+    items.append(row);
+  }
+  $('keep-row').hidden = !plan.items.some(i => i.id === 'conversations');
+  $('note').textContent = plan.keepsProgramFolder
+    ? `The program folder stays (${plan.programFolder}): it holds the SAIAS code. Delete it yourself if you no longer need it.`
+    : '';
+  $('summary').textContent = plan.bytes ? `${size(plan.bytes)} will be freed` : '';
+  $('actions').replaceChildren(button('Cancel', '', close), button('Uninstall', 'danger', start));
+  show('confirm');
+}
+
+function line(target, ev) {
+  if (!ev.text) return;
+  target.append(el('div', ev.type, ev.text));
+  target.scrollTop = target.scrollHeight;
+}
+
+async function start() {
+  state = 'working';
+  $('log').innerHTML = '';
+  show('working');
+  $('summary').textContent = '';
+  $('actions').replaceChildren();
+  try {
+    await api('/api/uninstall', { keepConversations: $('keep').checked });
+  } catch (e) {
+    return finish(false, e.message);
+  }
+  const events = new EventSource('/api/events?t=' + encodeURIComponent(token));
+  events.onmessage = msg => {
+    const ev = JSON.parse(msg.data);
+    if (ev.type === 'progress') return;
+    if (ev.type === 'done') { events.close(); return finish(true); }
+    if (ev.type === 'error') { line($('log'), ev); events.close(); return finish(false, ev.text); }
+    line($('log'), ev);
+  };
+}
+
+function finish(ok, message) {
+  if (state === 'done') return;
+  state = 'done';
+  $('final-log').replaceChildren(...[...$('log').childNodes].map(n => n.cloneNode(true)));
+  $('result').replaceChildren(
+    el('div', 'big ' + (ok ? 'ok' : 'bad'), ok ? '✓' : '!'),
+    el('h3', null, ok ? 'SAIAS is uninstalled' : 'The uninstall stopped'),
+    el('p', null, ok ? 'Models, data, shortcuts and tool settings are removed. Run Install-SAIAS.cmd to install SAIAS again.' : message || 'An error occurred.'));
+  show('done');
+  $('actions').replaceChildren(button('Close', ok ? '' : 'danger', close));
+}
+
+function close() { api('/api/close', {}).finally(() => window.close()); }
+
+load();
+</script>
+</body>
+</html>
