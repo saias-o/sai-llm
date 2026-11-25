@@ -1,6 +1,6 @@
 #pragma once
 
-#include "advisor.hpp"
+#include "hardware.hpp"
 
 #include <array>
 #include <utility>

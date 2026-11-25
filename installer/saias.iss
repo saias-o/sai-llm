@@ -73,11 +73,43 @@ Filename: "{app}\SAIAS.exe"; Description: "Open SAIAS"; Flags: postinstall nowai
 Filename: "{cmd}"; Parameters: "/d /c ""{app}\saias.cmd"" stop"; Flags: runhidden waituntilterminated; RunOnceId: "StopSAIAS"
 
 [Code]
+// "saias install" may have added the app folder to the user PATH: take it out again.
+procedure RemoveFromUserPath(Dir: String);
+var
+  Path, Entry, Kept: String;
+  Separator: Integer;
+begin
+  if not RegQueryStringValue(HKEY_CURRENT_USER, 'Environment', 'Path', Path) then
+    exit;
+  Kept := '';
+  while Path <> '' do
+  begin
+    Separator := Pos(';', Path);
+    if Separator = 0 then
+    begin
+      Entry := Path;
+      Path := '';
+    end else begin
+      Entry := Copy(Path, 1, Separator - 1);
+      Delete(Path, 1, Separator);
+    end;
+    if (Entry <> '') and (CompareText(RemoveBackslashUnlessRoot(Entry), RemoveBackslashUnlessRoot(Dir)) <> 0) then
+    begin
+      if Kept <> '' then
+        Kept := Kept + ';';
+      Kept := Kept + Entry;
+    end;
+  end;
+  RegWriteExpandStringValue(HKEY_CURRENT_USER, 'Environment', 'Path', Kept);
+end;
+
 // Models are large: ask before deleting them with the app.
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
 var
   DataDir: String;
 begin
+  if CurUninstallStep = usUninstall then
+    RemoveFromUserPath(ExpandConstant('{app}'));
   if CurUninstallStep = usPostUninstall then
   begin
     DataDir := ExpandConstant('{localappdata}\SAIAS');

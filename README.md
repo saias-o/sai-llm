@@ -27,6 +27,31 @@ This repository, saias-llm, contains the installer, the model catalog, the SAIAS
 
 Already have model files or llama.cpp builds on disk? Run `saias adopt <folder>` before installing so they are reused instead of downloaded.
 
+## Linux and macOS
+
+```sh
+git clone https://github.com/saias-o/saias-llm.git && cd saias-llm
+./saias install
+./saias start --open
+```
+
+`./saias` uses Node.js 22 or later, or installs a private, checksum-verified copy. The catalog has Linux x64 variants (CUDA, Vulkan, or CPU) and Apple Silicon variants (Metal); `saias-pro` on a Mac needs 48 GB of unified memory. These variants are new and less tested than the Windows ones. The SAIAS desktop app is Windows-only; on Linux and macOS, `saias status` and `saias recommend` give the same information.
+
+## Privacy
+
+SAIAS sends no telemetry. It connects to the internet only to download the catalog (GitHub), runtimes and models (GitHub and Hugging Face) and Node.js (nodejs.org), and, when a model uses the web tools, to search engines and the pages it reads. The SAIAS app checks the catalog for updates at start and every six hours. Conversations, settings and models stay on your PC.
+
+## How SAIAS compares
+
+| | SAIAS | Ollama | LM Studio | Jan |
+| --- | --- | --- | --- | --- |
+| Who picks the model | The catalog, for your hardware | You, by name | You, in a model browser | You |
+| Model names in your tools | Stable profiles (`saias-pro`) | Model tags | Model files | Model names |
+| Agent tools set up for you | Hermes, OpenCode, Codex, Claude Code, web search | No | No | No |
+| Open source | Yes (GPL-3.0) | Yes | No | Yes |
+
+SAIAS builds on the same llama.cpp engine. Ollama, LM Studio and Jan are better choices when you want to pick and try many models yourself.
+
 ## Command line
 
 `saias.cmd` (or `node src/cli.js` on any system with Node.js 22+) manages everything:
@@ -41,7 +66,8 @@ Already have model files or llama.cpp builds on disk? Run `saias adopt <folder>`
 | `saias update` | Fetches the latest catalog and installs the newer models it selects for this PC. `--check` only reports. |
 | `saias rollback` | Returns to the models installed before the last update. |
 | `saias adopt <folder>` | Registers runtimes and model files already on disk. `--move` moves them into the SAIAS folder (same drive only), `--verify` checks their sha256. |
-| `saias status` | Shows the hardware, the installed profiles and the hub state. `--json` for scripts. |
+| `saias status` | Shows the hardware, the installed profiles, their measured speed and the hub state. `--json` for scripts. |
+| `saias recommend` | Shows which profile suits this PC best, from the catalog and measured speeds. `--json` for scripts. |
 | `saias clean` | Deletes files no installed or previous profile uses. |
 
 ## How SAIAS works
@@ -60,15 +86,19 @@ The installer picks the first variant the PC can run. `"device": "auto"` selects
 
 **Reasoning.** Clients send the standard OpenAI `reasoning_effort` (`none`, `minimal`, `low`, `medium`, `high`, `xhigh`). The hub translates it into the chat template arguments of the model behind the profile and uses the nearest level the model supports. `GET /v1/models` lists each profile's levels, vision support and context length.
 
+**Network access.** The hub listens on `127.0.0.1` only. To use SAIAS from another device, set `SAIAS_HUB_HOST=0.0.0.0` and `SAIAS_API_KEY`; requests from other devices that reach a model or a tool then need `Authorization: Bearer <key>`, and Llama Chat asks for the key in its settings. See [SECURITY.md](SECURITY.md).
+
+**Runtimes.** The published llama.cpp builds lack three chat parser fixes that tool calls need. [runtimes/](runtimes/) keeps them as patches with a script that builds SAIAS runtimes on top of the official archives.
+
 **Data folder.** Runtimes, models, logs and the installation state live in `%LOCALAPPDATA%\SAIAS` (set `SAIAS_HOME` to use another drive). Downloads are verified against the catalog sha256 before use.
 
 ## Profiles in the current catalog
 
 | Profile | Model | Runtime | Context | Requirements |
 | --- | --- | --- | ---: | --- |
-| `saias-flash` | LFM3 1.7B Q4_K_M | llama.cpp b12631, Vulkan or CPU | 262,144 | Any PC |
-| `saias-smart` | Ternary Bonsai 2 27B PTQ1_0, images | PrismML llama.cpp b12128, CUDA 12.4 (Vulkan or CPU variant: slower) | 200,000 | NVIDIA GPU with 8 GB VRAM, or 16 GB RAM |
-| `saias-pro` | Inkling 2 Mini UD-Q4_K_XL, images | llama.cpp b12631, CUDA 12 | 500,000 | NVIDIA GPU with 8 GB VRAM and 32 GB RAM |
+| `saias-flash` | LFM3 1.7B Q4_K_M | llama.cpp b12631: Vulkan or CPU, Metal on macOS | 262,144 | Any PC |
+| `saias-smart` | Ternary Bonsai 2 27B PTQ1_0, images | PrismML llama.cpp b12128: CUDA, Metal; Vulkan or CPU is slower | 200,000 (65,536 on Vulkan or CPU) | NVIDIA GPU with 8 GB VRAM, Apple Silicon with 16 GB, or 16 GB RAM |
+| `saias-pro` | Inkling 2 Mini UD-Q4_K_XL, images | llama.cpp b12631: CUDA, Metal | 500,000 (200,000 on Metal) | NVIDIA GPU with 8 GB VRAM and 32 GB RAM, or Apple Silicon with 48 GB |
 
 `saias-flash` is fast but small: use it for chat, and `saias-smart` or `saias-pro` for agent and coding work. Model licenses are shown, and must be accepted, during installation.
 
@@ -168,6 +198,10 @@ The Windows CMake build fetches a pinned PDFium runtime and copies `pdfium.dll` 
 2. Add a runtime if it needs one, with `supports` listing the model formats it can run.
 3. Add or change a variant under the profile. Variants are tried in order, so put the fastest one first.
 4. Increase `version` (a date, `YYYY.MM.DD`). Installed copies pick it up with `saias update`.
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md): model proposals come with `saias eval` reports, and `npm test` runs without any model.
 
 ## License
 

@@ -1,3 +1,6 @@
 * text=auto
 *.cmd text eol=crlf
 *.jinja text eol=lf
+*.patch -text
+saias text eol=lf
+*.sh text eol=lf

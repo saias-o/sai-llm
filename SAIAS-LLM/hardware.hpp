@@ -1,6 +1,5 @@
 #pragma once
 
-#include <optional>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -29,28 +28,8 @@ struct Hardware {
     std::vector<Adapter> adapters;
 };
 
-struct Profile {
-    std::wstring_view name;
-    std::wstring_view context;
-    double cpu_ram_gib;
-    double gpu_vram_gib;
-    double gpu_host_ram_gib;
-};
-
-struct Choice {
-    const Profile* profile;
-    std::wstring mode;
-    std::wstring reason;
-    bool target_plausible = false;
-};
-
-struct Advice {
-    std::optional<Choice> most_capable;
-    Choice everyday;
-};
-
+// Hardware inventory shown by the SAIAS app. Profile choices come from the catalog (saias recommend).
 Hardware scan_hardware();
-Advice recommend(const Hardware& hardware);
 std::wstring gib(double amount);
 
 } // namespace saias

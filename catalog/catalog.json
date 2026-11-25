@@ -1,13 +1,18 @@
 {
   "schema": 1,
-  "version": "2026.11.26",
+  "version": "2026.11.27",
   "runtimes": {
     "unsloth-b12631-vulkan-win-x64": {
       "name": "llama.cpp b12631 (Unsloth build), Vulkan",
       "platform": "win32-x64",
       "backend": "vulkan",
       "build": 12631,
-      "supports": ["inkling", "router", "mcp", "webui"],
+      "supports": [
+        "inkling",
+        "router",
+        "mcp",
+        "webui"
+      ],
       "license": "MIT",
       "binary": "llama-server.exe",
       "archives": [
@@ -23,7 +28,12 @@
       "platform": "win32-x64",
       "backend": "cuda",
       "build": 12631,
-      "supports": ["inkling", "router", "mcp", "webui"],
+      "supports": [
+        "inkling",
+        "router",
+        "mcp",
+        "webui"
+      ],
       "license": "MIT",
       "binary": "llama-server.exe",
       "archives": [
@@ -39,7 +49,9 @@
       "platform": "win32-x64",
       "backend": "cuda",
       "build": 12128,
-      "supports": ["ptq1_0"],
+      "supports": [
+        "ptq1_0"
+      ],
       "license": "MIT",
       "binary": "llama-server.exe",
       "archives": [
@@ -60,7 +72,9 @@
       "platform": "win32-x64",
       "backend": "vulkan",
       "build": 12128,
-      "supports": ["ptq1_0"],
+      "supports": [
+        "ptq1_0"
+      ],
       "license": "MIT",
       "binary": "llama-server.exe",
       "archives": [
@@ -68,6 +82,123 @@
           "url": "https://github.com/PrismML-Eng/llama.cpp/releases/download/prism-b12128-d7b2896/llama-prism-b12128-d7b2896-bin-win-vulkan-x64.zip",
           "size": 28692091,
           "sha256": "ec1479514a34272c815b3d194046d27003867aa9c95069d9cd3031b5c31e01ff"
+        }
+      ]
+    },
+    "unsloth-b12631-vulkan-linux-x64": {
+      "name": "llama.cpp b12631 (Unsloth build), Vulkan",
+      "platform": "linux-x64",
+      "backend": "vulkan",
+      "build": 12631,
+      "supports": [
+        "inkling",
+        "router",
+        "mcp",
+        "webui"
+      ],
+      "license": "MIT",
+      "binary": "llama-server",
+      "archives": [
+        {
+          "url": "https://github.com/unslothai/llama.cpp/releases/download/b12631-mix-acc0843/app-b12631-mix-acc0843-linux-x64-vulkan.tar.gz",
+          "size": 32833450,
+          "sha256": "7214fe5d5711d59c4ae28da09aaf2c7744682903f4925d52ae0c5b6914eb1e4d"
+        }
+      ]
+    },
+    "unsloth-b12631-cuda12-linux-x64": {
+      "name": "llama.cpp b12631 (Unsloth build), CUDA 12",
+      "platform": "linux-x64",
+      "backend": "cuda",
+      "build": 12631,
+      "supports": [
+        "inkling",
+        "router",
+        "mcp",
+        "webui"
+      ],
+      "license": "MIT",
+      "binary": "llama-server",
+      "archives": [
+        {
+          "url": "https://github.com/unslothai/llama.cpp/releases/download/b12631-mix-acc0843/app-b12631-mix-acc0843-linux-x64-cuda12-portable.tar.gz",
+          "size": 476273227,
+          "sha256": "d5f51f2581d90811c1161af3a1ba2dc2f32ef8adcb90b3e0c4814ecf9696951c"
+        }
+      ]
+    },
+    "unsloth-b12631-metal-macos-arm64": {
+      "name": "llama.cpp b12631 (Unsloth build), Metal",
+      "platform": "darwin-arm64",
+      "backend": "metal",
+      "build": 12631,
+      "supports": [
+        "inkling",
+        "router",
+        "mcp",
+        "webui"
+      ],
+      "license": "MIT",
+      "binary": "llama-server",
+      "archives": [
+        {
+          "url": "https://github.com/unslothai/llama.cpp/releases/download/b12631-mix-acc0843/llama-b12631-mix-acc0843-bin-macos-arm64.tar.gz",
+          "size": 13152661,
+          "sha256": "935eb354b08f331ab5aab3241026a8e8f4f9be61530a4a8dd2ac0603dbeaedab"
+        }
+      ]
+    },
+    "prism-b12128-cuda12-linux-x64": {
+      "name": "llama.cpp b12128 (PrismML fork), CUDA 12.4",
+      "platform": "linux-x64",
+      "backend": "cuda",
+      "build": 12128,
+      "supports": [
+        "ptq1_0"
+      ],
+      "license": "MIT",
+      "binary": "llama-server",
+      "archives": [
+        {
+          "url": "https://github.com/PrismML-Eng/llama.cpp/releases/download/prism-b12128-d7b2896/llama-prism-b12128-d7b2896-bin-linux-cuda-12.4-x64.tar.gz",
+          "size": 369464173,
+          "sha256": "0d31cc673f400004533ff407a133d957f7fc322e67457958693f752c6d87d342"
+        }
+      ]
+    },
+    "prism-b12128-vulkan-linux-x64": {
+      "name": "llama.cpp b12128 (PrismML fork), Vulkan",
+      "platform": "linux-x64",
+      "backend": "vulkan",
+      "build": 12128,
+      "supports": [
+        "ptq1_0"
+      ],
+      "license": "MIT",
+      "binary": "llama-server",
+      "archives": [
+        {
+          "url": "https://github.com/PrismML-Eng/llama.cpp/releases/download/prism-b12128-d7b2896/llama-prism-b12128-d7b2896-bin-ubuntu-vulkan-x64.tar.gz",
+          "size": 33757914,
+          "sha256": "a73a76f26b161e2fff3815cc3ae6f1daeee5991e1269982561aa620e8e07cca4"
+        }
+      ]
+    },
+    "prism-b12128-metal-macos-arm64": {
+      "name": "llama.cpp b12128 (PrismML fork), Metal",
+      "platform": "darwin-arm64",
+      "backend": "metal",
+      "build": 12128,
+      "supports": [
+        "ptq1_0"
+      ],
+      "license": "MIT",
+      "binary": "llama-server",
+      "archives": [
+        {
+          "url": "https://github.com/PrismML-Eng/llama.cpp/releases/download/prism-b12128-d7b2896/llama-prism-b12128-d7b2896-bin-macos-arm64.tar.gz",
+          "size": 13172028,
+          "sha256": "7072bcece7b2ae5cc97db85b65f4a57d96a4f1b926555bc97cf48d6357b3e532"
         }
       ]
     }
@@ -100,7 +231,9 @@
         "name": "Apache-2.0",
         "url": "https://huggingface.co/prism-ml/Ternary-Bonsai-2-27B-gguf/tree/839bd57023c1558945afea70a74fa83c054f35f9"
       },
-      "needs": ["ptq1_0"],
+      "needs": [
+        "ptq1_0"
+      ],
       "vision": true,
       "context": 200000,
       "files": {
@@ -125,7 +258,9 @@
         "name": "Apache-2.0",
         "url": "https://huggingface.co/unsloth/Inkling-2-Mini-GGUF/tree/45fd08764f2b0bf16b03a5483a80e5c7aaec8772"
       },
-      "needs": ["inkling"],
+      "needs": [
+        "inkling"
+      ],
       "vision": true,
       "context": 500000,
       "template": "templates/Inkling-2-Mini-reasoning.jinja",
@@ -148,6 +283,8 @@
   "profiles": {
     "flash": {
       "summary": "Fast everyday chat on any PC",
+      "rank": 1,
+      "interactive": true,
       "always": true,
       "variants": [
         {
@@ -173,8 +310,76 @@
           "reasoning": {
             "default": "none",
             "levels": {
-              "none": { "enable_thinking": false },
-              "medium": { "enable_thinking": true }
+              "none": {
+                "enable_thinking": false
+              },
+              "medium": {
+                "enable_thinking": true
+              }
+            }
+          }
+        },
+        {
+          "id": "flash-vulkan-linux",
+          "model": "lfm3-1.7b-q4km",
+          "runtime": "unsloth-b12631-vulkan-linux-x64",
+          "requires": {},
+          "device": "auto",
+          "server": {
+            "ctx-size": 262144,
+            "parallel": 1,
+            "n-gpu-layers": 99,
+            "batch-size": 512,
+            "ubatch-size": 128,
+            "flash-attn": "on",
+            "cache-type-k": "q8_0",
+            "cache-type-v": "q8_0",
+            "jinja": true,
+            "temp": 0.1,
+            "top-k": 50,
+            "repeat-penalty": 1.1
+          },
+          "reasoning": {
+            "default": "none",
+            "levels": {
+              "none": {
+                "enable_thinking": false
+              },
+              "medium": {
+                "enable_thinking": true
+              }
+            }
+          }
+        },
+        {
+          "id": "flash-metal",
+          "model": "lfm3-1.7b-q4km",
+          "runtime": "unsloth-b12631-metal-macos-arm64",
+          "requires": {},
+          "device": "auto",
+          "server": {
+            "ctx-size": 262144,
+            "parallel": 1,
+            "n-gpu-layers": 99,
+            "batch-size": 512,
+            "ubatch-size": 128,
+            "flash-attn": "on",
+            "cache-type-k": "q8_0",
+            "cache-type-v": "q8_0",
+            "jinja": true,
+            "temp": 0.1,
+            "top-k": 50,
+            "repeat-penalty": 1.1
+          },
+          "reasoning": {
+            "default": "none",
+            "levels": {
+              "none": {
+                "enable_thinking": false
+              },
+              "medium": {
+                "enable_thinking": true
+              }
             }
           }
         }
@@ -182,12 +387,16 @@
     },
     "smart": {
       "summary": "Capable assistant with images and a 200k context",
+      "rank": 2,
+      "interactive": true,
       "variants": [
         {
           "id": "smart-cuda",
           "model": "bonsai2-27b-ptq1",
           "runtime": "prism-b12128-cuda12-win-x64",
-          "requires": { "nvidiaVramGB": 8 },
+          "requires": {
+            "nvidiaVramGB": 8
+          },
           "server": {
             "ctx-size": 200000,
             "parallel": 1,
@@ -198,27 +407,125 @@
             "cache-ram": 16384,
             "jinja": true,
             "no-reasoning-preserve": true,
-            "temp": 1.0,
+            "temp": 1,
             "top-p": 0.95,
             "top-k": 20,
             "min-p": 0.05,
-            "chat-template-kwargs": { "reasoning_effort": "medium" }
+            "chat-template-kwargs": {
+              "reasoning_effort": "medium"
+            }
           },
           "reasoning": {
             "default": "medium",
             "levels": {
-              "none": { "enable_thinking": false },
-              "low": { "reasoning_effort": "low" },
-              "medium": { "reasoning_effort": "medium" },
-              "high": { "reasoning_effort": "high" }
+              "none": {
+                "enable_thinking": false
+              },
+              "low": {
+                "reasoning_effort": "low"
+              },
+              "medium": {
+                "reasoning_effort": "medium"
+              },
+              "high": {
+                "reasoning_effort": "high"
+              }
             }
           }
+        },
+        {
+          "id": "smart-cuda-linux",
+          "model": "bonsai2-27b-ptq1",
+          "runtime": "prism-b12128-cuda12-linux-x64",
+          "requires": {
+            "nvidiaVramGB": 8
+          },
+          "server": {
+            "ctx-size": 200000,
+            "parallel": 1,
+            "n-gpu-layers": 99,
+            "flash-attn": "on",
+            "cache-type-k": "q4_0",
+            "cache-type-v": "q4_0",
+            "cache-ram": 16384,
+            "jinja": true,
+            "no-reasoning-preserve": true,
+            "temp": 1,
+            "top-p": 0.95,
+            "top-k": 20,
+            "min-p": 0.05,
+            "chat-template-kwargs": {
+              "reasoning_effort": "medium"
+            }
+          },
+          "reasoning": {
+            "default": "medium",
+            "levels": {
+              "none": {
+                "enable_thinking": false
+              },
+              "low": {
+                "reasoning_effort": "low"
+              },
+              "medium": {
+                "reasoning_effort": "medium"
+              },
+              "high": {
+                "reasoning_effort": "high"
+              }
+            }
+          }
+        },
+        {
+          "id": "smart-metal",
+          "model": "bonsai2-27b-ptq1",
+          "runtime": "prism-b12128-metal-macos-arm64",
+          "requires": {
+            "ramGB": 16
+          },
+          "server": {
+            "ctx-size": 200000,
+            "parallel": 1,
+            "n-gpu-layers": 99,
+            "flash-attn": "on",
+            "cache-type-k": "q4_0",
+            "cache-type-v": "q4_0",
+            "jinja": true,
+            "no-reasoning-preserve": true,
+            "temp": 1,
+            "top-p": 0.95,
+            "top-k": 20,
+            "min-p": 0.05,
+            "chat-template-kwargs": {
+              "reasoning_effort": "medium"
+            }
+          },
+          "reasoning": {
+            "default": "medium",
+            "levels": {
+              "none": {
+                "enable_thinking": false
+              },
+              "low": {
+                "reasoning_effort": "low"
+              },
+              "medium": {
+                "reasoning_effort": "medium"
+              },
+              "high": {
+                "reasoning_effort": "high"
+              }
+            }
+          },
+          "device": "auto"
         },
         {
           "id": "smart-vulkan",
           "model": "bonsai2-27b-ptq1",
           "runtime": "prism-b12128-vulkan-win-x64",
-          "requires": { "ramGB": 16 },
+          "requires": {
+            "ramGB": 16
+          },
           "device": "auto",
           "slow": true,
           "server": {
@@ -229,19 +536,72 @@
             "cache-type-v": "q4_0",
             "jinja": true,
             "no-reasoning-preserve": true,
-            "temp": 1.0,
+            "temp": 1,
             "top-p": 0.95,
             "top-k": 20,
             "min-p": 0.05,
-            "chat-template-kwargs": { "reasoning_effort": "medium" }
+            "chat-template-kwargs": {
+              "reasoning_effort": "medium"
+            }
           },
           "reasoning": {
             "default": "medium",
             "levels": {
-              "none": { "enable_thinking": false },
-              "low": { "reasoning_effort": "low" },
-              "medium": { "reasoning_effort": "medium" },
-              "high": { "reasoning_effort": "high" }
+              "none": {
+                "enable_thinking": false
+              },
+              "low": {
+                "reasoning_effort": "low"
+              },
+              "medium": {
+                "reasoning_effort": "medium"
+              },
+              "high": {
+                "reasoning_effort": "high"
+              }
+            }
+          }
+        },
+        {
+          "id": "smart-vulkan-linux",
+          "model": "bonsai2-27b-ptq1",
+          "runtime": "prism-b12128-vulkan-linux-x64",
+          "requires": {
+            "ramGB": 16
+          },
+          "device": "auto",
+          "slow": true,
+          "server": {
+            "ctx-size": 65536,
+            "parallel": 1,
+            "n-gpu-layers": 99,
+            "cache-type-k": "q4_0",
+            "cache-type-v": "q4_0",
+            "jinja": true,
+            "no-reasoning-preserve": true,
+            "temp": 1,
+            "top-p": 0.95,
+            "top-k": 20,
+            "min-p": 0.05,
+            "chat-template-kwargs": {
+              "reasoning_effort": "medium"
+            }
+          },
+          "reasoning": {
+            "default": "medium",
+            "levels": {
+              "none": {
+                "enable_thinking": false
+              },
+              "low": {
+                "reasoning_effort": "low"
+              },
+              "medium": {
+                "reasoning_effort": "medium"
+              },
+              "high": {
+                "reasoning_effort": "high"
+              }
             }
           }
         }
@@ -249,12 +609,17 @@
     },
     "pro": {
       "summary": "Most capable, images and a 500k context (NVIDIA GPU, 32 GB RAM)",
+      "rank": 3,
+      "interactive": false,
       "variants": [
         {
           "id": "pro-cuda",
           "model": "inkling2-mini-q4kxl",
           "runtime": "unsloth-b12631-cuda12-win-x64",
-          "requires": { "nvidiaVramGB": 8, "ramGB": 32 },
+          "requires": {
+            "nvidiaVramGB": 8,
+            "ramGB": 32
+          },
           "server": {
             "ctx-size": 500000,
             "parallel": 1,
@@ -271,24 +636,147 @@
             "top-p": 1,
             "top-k": 0,
             "min-p": 0,
-            "chat-template-kwargs": { "reasoning_effort": 0.99 }
+            "chat-template-kwargs": {
+              "reasoning_effort": 0.99
+            }
           },
           "reasoning": {
             "default": "xhigh",
             "levels": {
-              "none": { "reasoning_effort": "none" },
-              "minimal": { "reasoning_effort": "minimal" },
-              "low": { "reasoning_effort": "low" },
-              "medium": { "reasoning_effort": "medium" },
-              "high": { "reasoning_effort": "high" },
-              "xhigh": { "reasoning_effort": "xhigh" }
+              "none": {
+                "reasoning_effort": "none"
+              },
+              "minimal": {
+                "reasoning_effort": "minimal"
+              },
+              "low": {
+                "reasoning_effort": "low"
+              },
+              "medium": {
+                "reasoning_effort": "medium"
+              },
+              "high": {
+                "reasoning_effort": "high"
+              },
+              "xhigh": {
+                "reasoning_effort": "xhigh"
+              }
             }
           }
+        },
+        {
+          "id": "pro-cuda-linux",
+          "model": "inkling2-mini-q4kxl",
+          "runtime": "unsloth-b12631-cuda12-linux-x64",
+          "requires": {
+            "nvidiaVramGB": 8,
+            "ramGB": 32
+          },
+          "server": {
+            "ctx-size": 500000,
+            "parallel": 1,
+            "fit": "on",
+            "fit-target": 2048,
+            "batch-size": 512,
+            "ubatch-size": 128,
+            "flash-attn": "on",
+            "cache-type-k": "q8_0",
+            "cache-type-v": "q8_0",
+            "jinja": true,
+            "no-reasoning-preserve": true,
+            "temp": 1,
+            "top-p": 1,
+            "top-k": 0,
+            "min-p": 0,
+            "chat-template-kwargs": {
+              "reasoning_effort": 0.99
+            }
+          },
+          "reasoning": {
+            "default": "xhigh",
+            "levels": {
+              "none": {
+                "reasoning_effort": "none"
+              },
+              "minimal": {
+                "reasoning_effort": "minimal"
+              },
+              "low": {
+                "reasoning_effort": "low"
+              },
+              "medium": {
+                "reasoning_effort": "medium"
+              },
+              "high": {
+                "reasoning_effort": "high"
+              },
+              "xhigh": {
+                "reasoning_effort": "xhigh"
+              }
+            }
+          }
+        },
+        {
+          "id": "pro-metal",
+          "model": "inkling2-mini-q4kxl",
+          "runtime": "unsloth-b12631-metal-macos-arm64",
+          "requires": {
+            "ramGB": 48
+          },
+          "server": {
+            "ctx-size": 200000,
+            "parallel": 1,
+            "batch-size": 512,
+            "ubatch-size": 128,
+            "flash-attn": "on",
+            "cache-type-k": "q8_0",
+            "cache-type-v": "q8_0",
+            "jinja": true,
+            "no-reasoning-preserve": true,
+            "temp": 1,
+            "top-p": 1,
+            "top-k": 0,
+            "min-p": 0,
+            "chat-template-kwargs": {
+              "reasoning_effort": 0.99
+            },
+            "n-gpu-layers": 99
+          },
+          "reasoning": {
+            "default": "xhigh",
+            "levels": {
+              "none": {
+                "reasoning_effort": "none"
+              },
+              "minimal": {
+                "reasoning_effort": "minimal"
+              },
+              "low": {
+                "reasoning_effort": "low"
+              },
+              "medium": {
+                "reasoning_effort": "medium"
+              },
+              "high": {
+                "reasoning_effort": "high"
+              },
+              "xhigh": {
+                "reasoning_effort": "xhigh"
+              }
+            }
+          },
+          "device": "auto"
         }
       ]
     }
   },
   "hub": {
-    "uiRuntimes": ["unsloth-b12631-vulkan-win-x64", "unsloth-b12631-cuda12-win-x64"]
+    "uiRuntimes": [
+      "unsloth-b12631-vulkan-win-x64",
+      "unsloth-b12631-cuda12-win-x64",
+      "unsloth-b12631-vulkan-linux-x64",
+      "unsloth-b12631-cuda12-linux-x64",
+      "unsloth-b12631-metal-macos-arm64"
+    ]
   }
 }

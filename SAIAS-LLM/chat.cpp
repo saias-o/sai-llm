@@ -8,6 +8,7 @@
 
 #include <algorithm>
 #include <array>
+#include <atomic>
 #include <fstream>
 #include <iterator>
 #include <mutex>
@@ -716,7 +717,28 @@ bool supports_reasoning(const Model&, Reasoning effort) {
     return effort != Reasoning::on;
 }
 
+namespace {
+
+// -1 unknown, 0 no, 1 yes; filled from the catalog, read by the import thread too.
+std::array<std::atomic<int>, models.size()> image_support{-1, -1, -1};
+
+} // namespace
+
+void set_image_support(std::wstring_view id, bool supported) {
+    for (std::size_t i = 0; i < models.size(); ++i) {
+        if (models[i].id == id) {
+            image_support[i] = supported ? 1 : 0;
+        }
+    }
+}
+
 bool supports_images(const Model& model) {
+    for (std::size_t i = 0; i < models.size(); ++i) {
+        if (models[i].id == model.id && image_support[i] >= 0) {
+            return image_support[i] == 1;
+        }
+    }
+    // Before the catalog has been read: the profiles that have shipped with image support.
     return model.id == L"saias-smart" || model.id == L"saias-pro";
 }
 

@@ -1,0 +1,31 @@
+name: Model proposal
+description: Suggest a model for a SAIAS profile
+labels: [catalog]
+body:
+  - type: input
+    id: model
+    attributes:
+      label: Model
+      description: Name and a pinned link (commit or release) to the GGUF files.
+    validations:
+      required: true
+  - type: dropdown
+    id: profile
+    attributes:
+      label: Profile
+      options: [saias-flash, saias-smart, saias-pro, new profile]
+    validations:
+      required: true
+  - type: input
+    id: license
+    attributes:
+      label: License
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Evaluation
+      description: Attach `saias eval` reports for the candidate and the current profile model, and `saias bench` results with your hardware.
+    validations:
+      required: true

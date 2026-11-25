@@ -15,16 +15,20 @@ The items below are ordered by impact.
 - `saias adopt` reuses runtimes and model files already on disk.
 - Agent evaluation suite (`saias eval`: tools, code, long context, instructions) and speed benchmark (`saias bench`), validated against a fake server by `npm test`; results feed `saias status` and advice.
 - SAIAS Windows app (`SAIAS.exe`): notification area icon, start with Windows, update banner with an Update button (updates stay manual).
-- Windows installer (`installer/saias.iss`, `scripts/Build-Installer.ps1`): per-user, no administrator rights, optional signing.
+- Windows installer (`installer/saias.iss`, `scripts/Build-Installer.ps1`): per-user, no administrator rights, optional signing; uninstall removes the PATH entry.
+- The SAIAS app reads profile recommendations and image support from the catalog (`saias recommend --json`); its own hardware rules and the Linux/macOS console app are gone.
+- Linux x64 and Apple Silicon variants in the catalog, and a POSIX `./saias` launcher with a private Node.js.
+- SAIAS runtime recipe: the three tool-calling patches, verified to reproduce the patched source, and `scripts/Build-Runtime.ps1`.
+- Optional network access for the hub with `SAIAS_HUB_HOST` and a required `SAIAS_API_KEY`.
+- CONTRIBUTING, SECURITY, issue templates, privacy statement and comparison in the README.
 - Coding tools connected by `saias connect` (OpenCode, Codex, Hermes) and `saias claude` (Claude Code on the hub's Anthropic Messages API, without changing Claude Code settings). The hub translates `reasoning_effort`, Responses `reasoning.effort` and Anthropic `thinking`. `saias stop`, and an optional PATH entry for `saias`.
 
 ## Known gaps
 
-- **Tool-calling fixes are not in the published runtimes.** The b12631 release archives in the catalog predate three llama.cpp chat parser fixes (#29307, #32497, #32833) that Inkling tool calls need. Publish SAIAS runtime builds (for example as GitHub releases of this repository) or move to an upstream release that includes them.
-- **The native advisor duplicates the catalog rules.** `SAIAS-LLM/advisor.cpp` has its own hardware thresholds; it should read `saias status --json` or the catalog instead.
-- **Native chat capabilities are static.** Image support per profile is hard-coded in `SAIAS-LLM/chat.cpp`; it should come from the hub's `/v1/models` (`saias.vision`).
+- **SAIAS runtimes are not built or published yet.** Run `scripts/Build-Runtime.ps1`, publish the archives as a `runtime-b12631-saias1` release and switch the catalog to them, or move to an upstream release that includes the fixes (#29307, #32497, #32833).
+- **Linux and macOS variants are untested** on real machines.
 - **Benchmarks and evaluations have not been run on real models yet.** Publish the first results for each profile in the repository, and let measured speed choose between variants (today the benchmark only advises).
-- **The installer is not signed** and has not been built yet on a machine with Inno Setup; it also leaves the PATH entry added by `saias install` after uninstall.
+- **The installer is not signed** and has not been built yet on a machine with Inno Setup.
 - **Coding tools are configured but not yet validated end to end** on each local model (tool calls through OpenCode, Codex Responses and Claude Code Messages). This needs the agent evaluation suite.
 - **Continue, Cline and Aider** are documented with the generic OpenAI settings but not configured automatically.
 

@@ -3,7 +3,7 @@ project(Saias LANGUAGES CXX)
 
 if(WIN32)
     enable_language(RC)
-    add_executable(SAIAS-LLM WIN32 main_windows.cpp hardware_windows.cpp advisor.cpp chat.cpp chat_windows.cpp
+    add_executable(SAIAS-LLM WIN32 main_windows.cpp hardware_windows.cpp chat.cpp chat_windows.cpp
         attachments.cpp pdf_ocr.cpp saias_cli.cpp app.rc)
     target_include_directories(SAIAS-LLM PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
     target_compile_definitions(SAIAS-LLM PRIVATE UNICODE _UNICODE NOMINMAX WIN32_LEAN_AND_MEAN
@@ -18,8 +18,8 @@ if(WIN32)
         set_property(TARGET SAIAS-LLM PROPERTY MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
     endif()
 else()
-    add_executable(SAIAS-LLM main_console.cpp hardware_unix.cpp advisor.cpp)
-    target_link_libraries(SAIAS-LLM PRIVATE ${CMAKE_DL_LIBS})
+    # On Linux and macOS, the saias command line covers what the app does (saias recommend, status).
+    message(FATAL_ERROR "The SAIAS app is Windows-only. On Linux and macOS, use ./saias (see README).")
 endif()
 
 target_compile_features(SAIAS-LLM PRIVATE cxx_std_20)

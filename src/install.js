@@ -325,7 +325,8 @@ async function status(opts) {
   const catalog = catalogs.installed();
   const hub = await hubRunning();
   if (opts.json) {
-    console.log(JSON.stringify({ home: paths.home, catalogVersion: state.catalogVersion, profiles: state.profiles, benchmarks: state.benchmarks || {}, hub }, null, 2));
+    const models = require('./installed').installedModels();
+    console.log(JSON.stringify({ home: paths.home, catalogVersion: state.catalogVersion, profiles: state.profiles, models, benchmarks: state.benchmarks || {}, hub }, null, 2));
     return;
   }
   printHardware(hardware.detect());

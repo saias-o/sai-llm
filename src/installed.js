@@ -7,8 +7,6 @@ const store = require('./store');
 
 const HUB_PORT = Number(process.env.SAIAS_HUB_PORT || 8090);
 const HUB_URL = `http://127.0.0.1:${HUB_PORT}`;
-// Most capable first: the default for agent and coding tools.
-const PREFERENCE = ['pro', 'smart', 'flash'];
 
 // [{ id: "saias-pro", profile: "pro", name, context, vision, reasoning }], most capable first.
 function installedModels() {
@@ -28,10 +26,11 @@ function installedModels() {
       context: variant.server['ctx-size'] || model.context,
       vision: Boolean(model.vision),
       reasoning: levels.some(l => l !== 'none'),
+      rank: catalog.profiles[id].rank,
     });
   }
-  const rank = m => { const i = PREFERENCE.indexOf(m.profile); return i < 0 ? PREFERENCE.length : i; };
-  return models.sort((a, b) => rank(a) - rank(b));
+  // Most capable first (catalog rank): the default for agent and coding tools.
+  return models.sort((a, b) => b.rank - a.rank);
 }
 
 function requireInstalled() {

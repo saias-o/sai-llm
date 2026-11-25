@@ -30,7 +30,10 @@ test('variants follow the hardware', () => {
   assert.match(resolveProfile(catalog, 'pro', hw()).error, /NVIDIA/);
   assert.deepEqual(recommended(catalog, hw()), ['flash']); // smart-vulkan is marked slow
   assert.deepEqual(recommended(catalog, hw({ ramGB: 48, nvidia: [{ name: 'RTX', vramGB: 12 }] })), ['flash', 'smart', 'pro']);
-  assert.match(resolveProfile(catalog, 'flash', hw({ platform: 'linux-x64' })).error, /win32-x64/);
+  assert.equal(resolveProfile(catalog, 'flash', hw({ platform: 'linux-x64' })).variant.id, 'flash-vulkan-linux');
+  assert.equal(resolveProfile(catalog, 'smart', hw({ platform: 'darwin-arm64' })).variant.id, 'smart-metal');
+  assert.match(resolveProfile(catalog, 'pro', hw({ platform: 'darwin-arm64' })).error, /48 GB RAM/);
+  assert.match(resolveProfile(catalog, 'flash', hw({ platform: 'freebsd-x64' })).error, /not available on freebsd-x64/);
 });
 
 test('server arguments come from the variant', () => {

@@ -1,0 +1,30 @@
+{
+  "name": "b12631-saias1",
+  "build": 12631,
+  "commit": "acc0843-saias1",
+  "source": {
+    "url": "https://github.com/unslothai/llama.cpp/releases/download/b12631-mix-acc0843/llama.cpp-source-b12631-mix-acc0843.tar.gz",
+    "size": 13713562,
+    "sha256": "468127662ae8bdba4281c25ffe87e383a3db9b9e42f3179c7f3925db0e432d85",
+    "dir": "llama.cpp-b12631-mix-acc0843"
+  },
+  "patches": [
+    "0001-chat-token-aware-parsing-29307.patch",
+    "0002-chat-lazy-grammar-bare-json-tool-calls-32497.patch",
+    "0003-chat-improve-inkling-parser-32833.patch"
+  ],
+  "overlay": [
+    "llama-server.exe",
+    "llama-server-impl.dll",
+    "llama-common.dll",
+    "llama.dll",
+    "ggml.dll",
+    "ggml-base.dll",
+    "mtmd.dll"
+  ],
+  "bases": {
+    "cuda12": "unsloth-b12631-cuda12-win-x64",
+    "vulkan": "unsloth-b12631-vulkan-win-x64"
+  },
+  "release": "https://github.com/saias-o/saias-llm/releases/download/runtime-b12631-saias1"
+}

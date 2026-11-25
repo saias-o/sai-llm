@@ -14,6 +14,11 @@ const REASONING_LEVELS = ['none', 'minimal', 'low', 'medium', 'high', 'xhigh'];
 function validate(catalog) {
   const problems = [];
   if (catalog.schema !== SCHEMA) problems.push(`unsupported catalog schema ${catalog.schema} (expected ${SCHEMA})`);
+  Object.values(catalog.profiles || {}).forEach((profile, index) => {
+    // Capability order, higher is more capable. Catalogs written before "rank" existed list
+    // their profiles from the least to the most capable.
+    if (!Number.isFinite(profile.rank)) profile.rank = index + 1;
+  });
   for (const [pid, profile] of Object.entries(catalog.profiles || {})) {
     if (!/^[a-z][a-z0-9-]*$/.test(pid)) problems.push(`profile "${pid}": invalid name`);
     if (!profile.variants?.length) problems.push(`profile "${pid}": no variants`);

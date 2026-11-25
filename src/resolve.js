@@ -22,9 +22,10 @@ function resolveProfile(catalog, profileId, hw) {
     const runtime = catalog.runtimes[variant.runtime];
     const reasons = unmet(variant, runtime, hw);
     if (!reasons.length) return { profile: profileId, variant, model: catalog.models[variant.model], runtime };
-    rejected.push(reasons.join(', '));
+    // Only explain the variants built for this platform.
+    if (runtime.platform === hw.platform) rejected.push(reasons.join(', '));
   }
-  return { profile: profileId, error: rejected[0] || 'no variant for this machine' };
+  return { profile: profileId, error: rejected[0] || `not available on ${hw.platform} yet` };
 }
 
 function resolveAll(catalog, hw) {

@@ -27,6 +27,8 @@ inline constexpr std::array models{
 std::wstring_view reasoning_label(Reasoning effort);
 bool supports_reasoning(const Model& model, Reasoning effort);
 bool supports_images(const Model& model);
+// Image support of a profile as the installed catalog reports it (saias recommend).
+void set_image_support(std::wstring_view id, bool supported);
 
 struct Attachment {
     std::wstring name;

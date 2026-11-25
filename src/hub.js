@@ -16,6 +16,7 @@
 // OpenAI "reasoning_effort" values are translated into each model's own chat template
 // arguments, so clients never need to know which model is behind a profile.
 
+const crypto = require('node:crypto');
 const http = require('node:http');
 const net = require('node:net');
 const fs = require('node:fs');
@@ -27,7 +28,11 @@ const catalogs = require('./catalog');
 const store = require('./store');
 const llama = require('./llama');
 
+// Backends always listen on the loopback address. The hub does too, unless SAIAS_HUB_HOST opens
+// it to the network, which requires SAIAS_API_KEY.
 const HOST = '127.0.0.1';
+const BIND = process.env.SAIAS_HUB_HOST || HOST;
+const API_KEY = process.env.SAIAS_API_KEY || '';
 const PORT = Number(process.env.SAIAS_HUB_PORT || 8090);
 // One model in memory at a time. Set SAIAS_HUB_EXCLUSIVE=0 to allow several.
 const EXCLUSIVE = process.env.SAIAS_HUB_EXCLUSIVE !== '0';
@@ -92,7 +97,9 @@ function launch(label, exe, args) {
   const fd = fs.openSync(logFile, 'w');
   let proc;
   try {
-    proc = spawn(exe, args, { cwd: path.dirname(exe), windowsHide: true, stdio: ['ignore', fd, fd] });
+    // On Linux and macOS each server leads its own process group, so stopping it also stops the
+    // MCP tools it started.
+    proc = spawn(exe, args, { cwd: path.dirname(exe), windowsHide: true, detached: process.platform !== 'win32', stdio: ['ignore', fd, fd] });
   } finally {
     fs.closeSync(fd);
   }
@@ -110,9 +117,16 @@ function stop(proc) {
   if (!proc || proc.exited !== null) return Promise.resolve();
   return new Promise(resolve => {
     proc.once('exit', () => resolve());
-    if (process.platform === 'win32') execFile('taskkill', ['/PID', String(proc.pid), '/T', '/F'], { windowsHide: true }, () => {});
-    else proc.kill('SIGTERM');
+    killTree(proc);
   });
+}
+
+function killTree(proc) {
+  if (process.platform === 'win32') {
+    execFile('taskkill', ['/PID', String(proc.pid), '/T', '/F'], { windowsHide: true }, () => {});
+    return;
+  }
+  try { process.kill(-proc.pid, 'SIGTERM'); } catch { try { proc.kill('SIGTERM'); } catch { /* already gone */ } }
 }
 
 async function probe(port) {
@@ -251,9 +265,26 @@ function modelEvents(req, res) {
   res.on('close', () => { sseClients.delete(res); up.destroy(); });
 }
 
+function isLoopback(address = '') {
+  return address === '127.0.0.1' || address === '::1' || address === '::ffff:127.0.0.1';
+}
+
+// Requests that reach a model or a tool need the key when one is set; the Llama Chat page itself
+// does not (enter the key in its settings). Requests from this computer are always allowed.
+function authorized(req, pathname) {
+  if (!API_KEY || isLoopback(req.socket.remoteAddress)) return true;
+  const guarded = req.method !== 'GET' || /^\/(v1|models|props|tools|saias|slots|metrics|mcp)(\/|$)/.test(pathname);
+  if (!guarded) return true;
+  const header = req.headers.authorization?.replace(/^Bearer\s+/i, '') || req.headers['x-api-key'] || '';
+  const given = Buffer.from(String(header));
+  const expected = Buffer.from(API_KEY);
+  return given.length === expected.length && crypto.timingSafeEqual(given, expected);
+}
+
 async function handle(req, res) {
   const url = new URL(req.url, `http://${HOST}`);
   const p = url.pathname;
+  if (!authorized(req, p)) return sendError(res, 401, 'Missing or invalid API key', 'authentication_error');
 
   if (req.method === 'GET' && (p === '/v1/models' || p === '/models')) {
     return send(res, 200, { object: 'list', data: [...profiles.values()].map(modelEntry) });
@@ -316,7 +347,7 @@ function shutdown(code = 0) {
   for (const proc of children) {
     try {
       if (process.platform === 'win32') execFileSync('taskkill', ['/PID', String(proc.pid), '/T', '/F'], { stdio: 'ignore', windowsHide: true });
-      else proc.kill('SIGTERM');
+      else process.kill(-proc.pid, 'SIGTERM');
     } catch { /* already gone */ }
   }
   process.exit(code);
@@ -336,7 +367,10 @@ async function alreadyRunning() {
 }
 
 async function start({ open = false } = {}) {
-  const url = `http://${HOST}:${PORT}/`;
+  if (!isLoopback(BIND) && BIND !== 'localhost' && !API_KEY) {
+    throw new Error('SAIAS_HUB_HOST opens SAIAS to the network: set SAIAS_API_KEY as well.');
+  }
+  const url = `http://${BIND === '0.0.0.0' || BIND === '::' ? HOST : BIND}:${PORT}/`;
   if (await alreadyRunning()) {
     log(`SAIAS is already running at ${url}`);
     if (open) openBrowser(url);
@@ -364,7 +398,7 @@ async function start({ open = false } = {}) {
   });
   server.requestTimeout = 0;
   server.on('error', e => { log(`Cannot listen on ${url}: ${e.message}`); shutdown(1); });
-  server.listen(PORT, HOST, () => {
+  server.listen(PORT, BIND, () => {
     log(`SAIAS hub ready - ${url}  (${[...profiles.keys()].join(', ')})`);
     log(`OpenAI-compatible endpoint: ${url}v1. Press Ctrl+C to stop SAIAS and its models.`);
     if (open) openBrowser(url);

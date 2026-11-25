@@ -1,0 +1,110 @@
+From 42f6a58fd1bfd475d9f09ea3bf7ef671c059eaf2 Mon Sep 17 00:00:00 2001
+From: Michael <michael.overhorst@gmail.com>
+Date: Sun, 22 Nov 2026 12:19:04 +0100
+Subject: [PATCH] chat : trigger lazy grammar on bare JSON tool calls (#32497)
+
+Models like Llama 3.x emit tool calls as plain {"name": ...} JSON without a start marker, so with tool_choice=auto no grammar was produced at all. Use a pattern trigger on the opening of the call object instead.
+
+Assisted-by: Claude Code
+---
+ common/chat-auto-parser-generator.cpp | 22 ++++++++++++++++++----
+ tests/test-chat.cpp                   | 23 +++++++++++++++++++++++
+ 2 files changed, 41 insertions(+), 4 deletions(-)
+
+diff --git a/common/chat-auto-parser-generator.cpp b/common/chat-auto-parser-generator.cpp
+index 9b918b366c38..e59a556ad08c 100644
+--- a/common/chat-auto-parser-generator.cpp
++++ b/common/chat-auto-parser-generator.cpp
+@@ -69,9 +69,21 @@ common_chat_params peg_generator::generate_parser(const common_chat_template &
+     std::string trigger_marker = !autoparser.tools.format.section_start.empty() ? autoparser.tools.format.section_start :
+                                                                                   autoparser.tools.format.per_call_start;
+ 
++    // bare JSON calls without a start marker (e.g. Llama 3.x): trigger the lazy grammar on the call's opening instead
++    std::string trigger_pattern;
++    {
++        const auto & fmt = autoparser.tools.format;
++        bool top_level_name = (fmt.function_field.empty() || fmt.function_field == "function") &&
++                              fmt.name_field.find('.') == std::string::npos;
++        if (trigger_marker.empty() && fmt.mode == tool_format::JSON_NATIVE && !fmt.fun_name_is_key &&
++            !fmt.tools_array_wrapped && top_level_name) {
++            trigger_pattern = "\\{\\s*\"" + regex_escape(fmt.name_field) + "\"\\s*:";
++        }
++    }
++
+     bool has_response_format = !inputs.json_schema.empty() && inputs.json_schema.is_object();
+     bool include_grammar = has_response_format || (has_tools &&
+-            ((inputs.tool_choice == COMMON_CHAT_TOOL_CHOICE_AUTO && !trigger_marker.empty()) ||
++            ((inputs.tool_choice == COMMON_CHAT_TOOL_CHOICE_AUTO && (!trigger_marker.empty() || !trigger_pattern.empty())) ||
+               inputs.tool_choice == COMMON_CHAT_TOOL_CHOICE_REQUIRED));
+ 
+     if (include_grammar) {
+@@ -82,9 +94,11 @@ common_chat_params peg_generator::generate_parser(const common_chat_template &
+ 
+         // Set grammar triggers based on tool section markers (fall back to per-call markers)
+         if (data.grammar_lazy) {
+-            data.grammar_triggers = {
+-                { COMMON_GRAMMAR_TRIGGER_TYPE_WORD, trigger_marker }
+-            };
++            if (!trigger_marker.empty()) {
++                data.grammar_triggers = { { COMMON_GRAMMAR_TRIGGER_TYPE_WORD, trigger_marker } };
++            } else {
++                data.grammar_triggers = { { COMMON_GRAMMAR_TRIGGER_TYPE_PATTERN, trigger_pattern } };
++            }
+             if (autoparser.tools.format.openai_wrapper_trigger) {
+                 // model emits the OpenAI function wrapper, trigger on it
+                 data.grammar_triggers.push_back({ COMMON_GRAMMAR_TRIGGER_TYPE_WORD, "{\"type\": \"function\"," });
+diff --git a/tests/test-chat.cpp b/tests/test-chat.cpp
+index c4332941b6f1..7b70e7bcc853 100644
+--- a/tests/test-chat.cpp
++++ b/tests/test-chat.cpp
+@@ -1118,6 +1118,7 @@ struct peg_test_case {
+     common_chat_msg              expect;
+     bool                         is_partial            = false;
+     bool                         expect_reconstruction = false;
++    bool                         expect_grammar        = false;
+     std::vector<std::string>     expect_rules;
+ };
+ 
+@@ -1191,6 +1192,10 @@ static void test_peg_parser(common_chat_templates *                      tmpls,
+         }
+     }
+ 
++    if (tc.expect_grammar && session.grammar().empty()) {
++        throw std::runtime_error("expected a grammar constraining the tool calls, but none was produced");
++    }
++
+     common_chat_msg msg_accum;
+     common_chat_msg msg_prev;
+     msg_accum.role = msg_prev.role = "assistant";
+@@ -1614,6 +1619,11 @@ class peg_test_builder {
+         return *this;
+     }
+ 
++    peg_test_builder & expect_grammar() {
++        tc_.expect_grammar = true;
++        return *this;
++    }
++
+     peg_test_builder & tool_choice(common_chat_tool_choice choice) {
+         tc_.params.tool_choice = choice;
+         return *this;
+@@ -7108,6 +7118,19 @@ static void test_template_output_peg_parsers(bool detailed_debug) {
+         auto tst = peg_tester("models/templates/meta-llama-Llama-3.2-3B-Instruct.jinja", detailed_debug);
+         tst.test("Hello, world!\nWhat's up?").tools({ special_function_tool }).expect(message_assist).expect_reconstruction().expect_rules({ "tool-0" }).run();
+ 
++        // bare JSON calls have no start marker, auto mode must still produce a lazy grammar
++        tst.test("{\"name\": \"special_function\", \"parameters\": {\"arg1\": 1}}")
++            .tools({ special_function_tool })
++            .expect(message_assist_call)
++            .expect_grammar()
++            .run();
++        // same without spaces
++        tst.test("{\"name\":\"special_function\",\"parameters\":{\"arg1\":1}}")
++            .tools({ special_function_tool })
++            .expect(message_assist_call)
++            .expect_grammar()
++            .run();
++
+         // Continuation tests
+         tst.test("world!\nWhat's up?")
+             .messages({ message_user, message_assist_prefill_content })

@@ -1,0 +1,29 @@
+#!/bin/sh
+# SAIAS command line for Linux and macOS: ./saias install | start | update | status | help
+# Uses Node.js 22+ from PATH, or a private copy in the SAIAS data folder that it installs if needed.
+set -e
+here=$(cd "$(dirname "$0")" && pwd)
+
+if [ -n "$SAIAS_HOME" ]; then
+    data="$SAIAS_HOME"
+elif [ "$(uname -s)" = "Darwin" ]; then
+    data="$HOME/Library/Application Support/SAIAS"
+else
+    data="${XDG_DATA_HOME:-$HOME/.local/share}/saias"
+fi
+
+node_ok() {
+    major=$("$1" -p 'process.versions.node.split(".")[0]' 2>/dev/null) || return 1
+    [ "$major" -ge 22 ]
+}
+
+if [ -x "$data/node/bin/node" ]; then
+    node="$data/node/bin/node"
+elif command -v node >/dev/null 2>&1 && node_ok node; then
+    node=node
+else
+    SAIAS_DATA="$data" sh "$here/scripts/get-node.sh"
+    node="$data/node/bin/node"
+fi
+
+exec "$node" "$here/src/cli.js" "$@"

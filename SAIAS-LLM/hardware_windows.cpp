@@ -1,4 +1,4 @@
-#include "advisor.hpp"
+#include "hardware.hpp"
 #include "nvidia_inventory.hpp"
 
 #include <windows.h>
@@ -8,6 +8,8 @@
 #include <array>
 #include <cstddef>
 #include <cstring>
+#include <iomanip>
+#include <sstream>
 #include <stdexcept>
 #include <utility>
 
@@ -147,6 +149,12 @@ Hardware scan_hardware() {
     hardware.adapters = dxgi_adapters();
     merge_nvidia_adapters(hardware.adapters);
     return hardware;
+}
+
+std::wstring gib(double amount) {
+    std::wostringstream text;
+    text << std::fixed << std::setprecision(1) << amount << L" GiB";
+    return text.str();
 }
 
 } // namespace saias

@@ -25,6 +25,7 @@ Run
   start              Start the hub: Llama Chat and the local API on port 8090 (--open)
   stop               Stop the hub and its model servers
   status             Show the installation and the hub state (--json)
+  recommend          Show which profile suits this PC best (--json)
   claude [options]   Run Claude Code on a SAIAS model (--profile smart|pro|flash)
 
 Measure
@@ -95,6 +96,7 @@ async function main() {
     case 'rollback': return manage.rollback();
     case 'adopt': return manage.adopt(opts._[0], opts);
     case 'status': return manage.status(opts);
+    case 'recommend': return require('./recommend').run(opts);
     case 'clean': return manage.clean(opts);
     case 'help': case '--help': case '-h': console.log(HELP); return;
     default: throw new Error(`Unknown command "${command}". Run "saias help".`);

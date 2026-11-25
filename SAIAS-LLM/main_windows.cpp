@@ -1,5 +1,6 @@
-#include "advisor.hpp"
+#include "chat.hpp"
 #include "chat_windows.hpp"
+#include "hardware.hpp"
 #include "hermes_guide.hpp"
 #include "saias_cli.hpp"
 #include "third_party/picojson.h"
@@ -342,9 +343,93 @@ UpdateInfo parse_update(const std::string& output) {
     return info;
 }
 
+// One recommended profile, as "saias recommend --json" reports it.
+struct Pick {
+    std::wstring id;
+    std::wstring model;
+    std::wstring context;
+    std::wstring reason;
+    std::wstring speed;
+    bool installed = false;
+    bool measured = false;
+};
+
+struct Recommendation {
+    std::optional<Pick> most_capable;
+    std::optional<Pick> everyday;
+    std::wstring problem;
+};
+
+std::wstring thousands(double value) {
+    auto digits = std::to_wstring(static_cast<long long>(value));
+    for (auto i = static_cast<int>(digits.size()) - 3; i > 0; i -= 3) {
+        digits.insert(static_cast<std::size_t>(i), L",");
+    }
+    return digits;
+}
+
+// Asks the SAIAS command line which profiles suit this PC; the catalog holds every rule.
+Recommendation recommend() {
+    Recommendation result;
+    const auto output = saias::cli::run_capture(L"recommend --json", 60000);
+    const auto start = output.output.find('{');
+    picojson::value json;
+    if (!output.started || output.exit_code != 0 || start == std::string::npos
+        || !picojson::parse(json, output.output.substr(start)).empty() || !json.is<picojson::object>()) {
+        result.problem = saias::cli::project_folder().empty()
+            ? L"Open SAIAS.exe from the SAIAS folder to see recommendations."
+            : L"SAIAS could not read its catalog. Run Install-SAIAS.cmd, then scan again.";
+        return result;
+    }
+    const auto& profiles = json.get("profiles");
+    const auto find = [&](const picojson::value& choice, bool everyday) -> std::optional<Pick> {
+        if (!choice.is<picojson::object>() || !profiles.is<picojson::array>()) {
+            return std::nullopt;
+        }
+        const auto id = choice.get("id").to_str();
+        for (const auto& item : profiles.get<picojson::array>()) {
+            if (item.get("id").to_str() != id) {
+                continue;
+            }
+            Pick pick;
+            pick.id = wide(id);
+            pick.model = wide(item.get("model").to_str());
+            pick.context = item.get("context").is<double>() ? thousands(item.get("context").get<double>()) + L" tokens" : L"";
+            pick.reason = wide(choice.get("reason").to_str());
+            pick.installed = item.get("installed").is<bool>() && item.get("installed").get<bool>();
+            if (everyday) {
+                pick.measured = choice.get("measured").is<bool>() && choice.get("measured").get<bool>();
+                if (pick.measured && choice.get("genTps").is<double>()) {
+                    wchar_t speed[32]{};
+                    swprintf(speed, std::size(speed), L"%.1f tok/s measured", choice.get("genTps").get<double>());
+                    pick.speed = speed;
+                } else {
+                    pick.speed = L"Not measured yet";
+                }
+            }
+            return pick;
+        }
+        return std::nullopt;
+    };
+    result.most_capable = find(json.get("mostCapable"), false);
+    result.everyday = find(json.get("everyday"), true);
+    if (profiles.is<picojson::array>()) {
+        for (const auto& item : profiles.get<picojson::array>()) {
+            if (item.get("vision").is<bool>()) {
+                saias::chat::set_image_support(wide(item.get("id").to_str()), item.get("vision").get<bool>());
+            }
+        }
+    }
+    if (!result.most_capable && !result.everyday) {
+        result.problem = L"No SAIAS profile can run on this PC.";
+    }
+    return result;
+}
+
 struct Scan {
     saias::Hardware hardware;
-    std::optional<saias::Advice> advice;
+    Recommendation recommendation;
+    bool hardware_ready = false;
     std::wstring error;
 };
 
@@ -379,7 +464,7 @@ private:
     void open_step_docs() const;
     void draw();
     void draw_setup_step(float width);
-    void recommendation(float y, float width, const saias::Choice* choice, bool everyday);
+    void recommendation(float y, float width, const Pick* pick, bool everyday);
     void hardware(float width);
     void paint_button(const DRAWITEMSTRUCT& item) const;
     void check_updates();
@@ -693,10 +778,11 @@ void Window::scan() {
         Scan result;
         try {
             result.hardware = saias::scan_hardware();
-            result.advice = saias::recommend(result.hardware);
+            result.hardware_ready = true;
         } catch (...) {
             result.error = L"Windows could not report the hardware inventory. Try scanning again.";
         }
+        result.recommendation = recommend();
         {
             std::lock_guard lock(pending_mutex_);
             pending_ = std::move(result);
@@ -926,14 +1012,14 @@ void Window::draw() {
     if (view_ == View::guide) {
         draw_setup_step(content);
     } else if (view_ == View::advisor) {
-        canvas_.label(L"Model advisor", Type::title, bounds(margin, 78, content, 38));
+        canvas_.label(L"Models for this PC", Type::title, bounds(margin, 78, content, 38));
         const auto panel = bounds(margin, recommendation_top, content, 2 * recommendation_height);
         canvas_.fill(panel, surface);
         canvas_.outline(panel, border);
         canvas_.rule(margin, recommendation_top + recommendation_height, content, border);
-        const auto& advice = current_.advice;
-        recommendation(recommendation_top, content, advice && advice->most_capable ? &*advice->most_capable : nullptr, false);
-        recommendation(recommendation_top + recommendation_height, content, advice ? &advice->everyday : nullptr, true);
+        const auto& picks = current_.recommendation;
+        recommendation(recommendation_top, content, picks.most_capable ? &*picks.most_capable : nullptr, false);
+        recommendation(recommendation_top + recommendation_height, content, picks.everyday ? &*picks.everyday : nullptr, true);
         hardware(content);
     }
     canvas_.translate(0);
@@ -978,7 +1064,7 @@ void Window::draw_setup_step(float width) {
                   bounds(x, step_layout_.note_top(), inner, step_layout_.note_height), muted);
 }
 
-void Window::recommendation(float y, float width, const saias::Choice* choice, bool everyday) {
+void Window::recommendation(float y, float width, const Pick* pick, bool everyday) {
     const auto accent = everyday ? green : red;
     const float left = margin + 16;
     const float model_x = left + 127;
@@ -988,25 +1074,22 @@ void Window::recommendation(float y, float width, const saias::Choice* choice, b
     canvas_.fill(bounds(margin + 1, y + 1, 3, recommendation_height - 1), accent);
     canvas_.label(everyday ? L"Everyday pick" : L"Most capable", Type::strong,
                   bounds(left, y + 19, 112, 22), accent);
-    const std::wstring_view name = choice ? choice->profile->name :
-        (scanning_ ? L"Scanning\u2026" : (current_.error.empty() ? L"No full preset" : L"Unavailable"));
+    const std::wstring_view name = pick ? std::wstring_view(pick->id) : (scanning_ ? L"Scanning<BS>u2026" : L"Unavailable");
     canvas_.label(name, Type::model, bounds(model_x, y + 10, details_x - model_x - 12, 35));
 
-    if (choice) {
-        const auto context = std::wstring(choice->profile->context) + L" tokens";
-        canvas_.label(context, Type::strong, bounds(details_x, y + 19, details_width, 22),
+    if (pick) {
+        canvas_.label(pick->context, Type::strong, bounds(details_x, y + 19, details_width, 22),
                       text, DWRITE_TEXT_ALIGNMENT_TRAILING);
         if (everyday) {
-            const auto speed = choice->target_plausible ? L"20 tok/s target" : L"Speed uncertain";
-            canvas_.label(speed, Type::body, bounds(details_x, y + 42, details_width, 20),
-                          choice->target_plausible ? green : muted, DWRITE_TEXT_ALIGNMENT_TRAILING);
+            canvas_.label(pick->speed, Type::body, bounds(details_x, y + 42, details_width, 20),
+                          pick->measured ? green : muted, DWRITE_TEXT_ALIGNMENT_TRAILING);
         }
-        canvas_.label(choice->mode, Type::body, bounds(model_x, y + 42, details_x - model_x - 12, 20), muted);
+        const auto model = pick->model + (pick->installed ? L"" : L" (not installed)");
+        canvas_.label(model, Type::body, bounds(model_x, y + 42, details_x - model_x - 12, 20), muted);
     }
 
-    const auto reason = choice ? std::wstring_view(choice->reason)
-        : (scanning_ ? L"Reading the hardware inventory."
-                     : (current_.error.empty() ? L"The detected hardware is below the full-context presets." : L"Scan again to retry."));
+    const auto reason = pick ? std::wstring_view(pick->reason)
+        : (scanning_ ? std::wstring_view(L"Reading the hardware and the SAIAS catalog.") : std::wstring_view(current_.recommendation.problem));
     canvas_.label(reason, Type::wrapped, bounds(model_x, y + 65, right - model_x, 38), muted);
 }
 
@@ -1020,7 +1103,7 @@ void Window::hardware(float width) {
     canvas_.fill(panel, surface);
     canvas_.outline(panel, border);
 
-    if (!current_.advice) {
+    if (!current_.hardware_ready) {
         const auto status = scanning_ ? L"Scanning local hardware\u2026" : current_.error.c_str();
         canvas_.label(status, Type::wrapped, bounds(x + 16, hardware_top + 16, width - 32, 52), muted);
     } else {
@@ -1064,7 +1147,7 @@ void Window::hardware(float width) {
     }
 
     const float footer = hardware_top + panel_height + 14;
-    canvas_.label(L"Speed estimates assume a short prompt and a loaded model.",
+    canvas_.label(L"Recommendations come from the SAIAS catalog. Run saias bench to measure real speeds.",
                   Type::body, bounds(x, footer, width, 22), muted);
 }
 

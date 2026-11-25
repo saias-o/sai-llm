@@ -1,0 +1,30 @@
+name: Bug report
+description: Something does not work as described
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what you expected and what happened instead.
+    validations:
+      required: true
+  - type: textarea
+    id: status
+    attributes:
+      label: saias status
+      description: Output of `saias status` (or `saias.cmd status` in the SAIAS folder).
+      render: text
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: The end of the relevant log in the SAIAS logs folder (`%LOCALAPPDATA%\SAIAS\logs` on Windows), for example `saias-pro.log` or `ui.log`.
+      render: text
+  - type: input
+    id: version
+    attributes:
+      label: SAIAS version
+      description: From package.json or the installer name.

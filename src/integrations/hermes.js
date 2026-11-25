@@ -47,7 +47,7 @@ function installHermes() {
     execFileSync('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command',
       'irm https://raw.githubusercontent.com/NousResearch/hermes-agent/main/scripts/install.ps1 | iex'], { stdio: 'inherit' });
   } else {
-    execFileSync('sh', ['-c', 'curl -fsSL https://raw.githubusercontent.com/NousResearch/hermes-agent/main/scripts/install.sh | sh'], { stdio: 'inherit' });
+    execFileSync('sh', ['-c', 'curl -fsSL https://raw.githubusercontent.com/NousResearch/hermes-agent/main/scripts/install.sh | bash'], { stdio: 'inherit' });
   }
 }
 
