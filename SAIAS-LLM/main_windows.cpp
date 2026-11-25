@@ -418,6 +418,10 @@ Recommendation recommend() {
             if (item.get("vision").is<bool>()) {
                 saias::chat::set_image_support(wide(item.get("id").to_str()), item.get("vision").get<bool>());
             }
+            if (item.get("context").is<double>() && item.get("context").get<double>() > 0) {
+                saias::chat::set_context_size(wide(item.get("id").to_str()),
+                    static_cast<std::size_t>(item.get("context").get<double>()));
+            }
         }
     }
     if (!result.most_capable && !result.everyday) {

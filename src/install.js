@@ -351,8 +351,9 @@ function bytesIn(p) {
 }
 
 // Moves the data folder (models, runtimes, state, logs) to another folder, for example on another
-// drive, and points SAIAS at it. The private Node.js copy and data-folder.txt stay in the standard
-// folder; adopted files outside the data folder stay where they are.
+// drive, and points SAIAS at it. What lives at a fixed place stays in the standard folder: the
+// private Node.js copy, data-folder.txt, and the SAIAS app's Conversations and settings.json.
+// Adopted files outside the data folder stay where they are.
 async function move(target) {
   if (!target) throw new Error('Usage: saias move <folder>   (for example: saias move D:\\SAIAS)');
   if (process.env.SAIAS_HOME) throw new Error('SAIAS_HOME is set: change it instead.');
@@ -365,7 +366,7 @@ async function move(target) {
   }
   if (await hubRunning()) throw new Error('SAIAS is running: stop it first with "saias stop".');
 
-  const stay = lower(from) === lower(paths.standard) ? new Set(['data-folder.txt', 'node']) : new Set();
+  const stay = lower(from) === lower(paths.standard) ? new Set(['data-folder.txt', 'node', 'conversations', 'settings.json']) : new Set();
   const names = fs.existsSync(from) ? fs.readdirSync(from).filter(n => !stay.has(n.toLowerCase())) : [];
   fs.mkdirSync(to, { recursive: true });
   const clash = names.filter(n => fs.existsSync(path.join(to, n)));

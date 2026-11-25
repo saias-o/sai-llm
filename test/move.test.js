@@ -29,6 +29,8 @@ test('move carries the files, rebases state.json and redirects the next runs', a
   fs.mkdirSync(path.join(from, 'models'), { recursive: true });
   fs.mkdirSync(path.join(from, 'runtimes', 'r1'), { recursive: true });
   fs.mkdirSync(path.join(from, 'node'), { recursive: true });
+  fs.mkdirSync(path.join(from, 'Conversations'), { recursive: true });
+  fs.writeFileSync(path.join(from, 'settings.json'), '{}');
   const model = path.join(from, 'models', 'm.gguf');
   fs.writeFileSync(model, 'weights');
   const state = store.load();
@@ -44,6 +46,8 @@ test('move carries the files, rebases state.json and redirects the next runs', a
   assert.equal(fs.readFileSync(path.join(to, 'models', 'm.gguf'), 'utf8'), 'weights');
   assert.ok(!fs.existsSync(model));
   assert.ok(fs.existsSync(path.join(from, 'node')), 'the private Node.js copy stays');
+  assert.ok(fs.existsSync(path.join(from, 'Conversations')), "the app's conversations stay");
+  assert.ok(fs.existsSync(path.join(from, 'settings.json')), "the app's chat settings stay");
   assert.equal(fs.readFileSync(path.join(from, 'data-folder.txt'), 'utf8').trim(), to);
   const moved = store.load();
   assert.equal(moved.files.abc.path, path.join(to, 'models', 'm.gguf'));

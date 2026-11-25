@@ -10,6 +10,7 @@
 #include <array>
 #include <atomic>
 #include <fstream>
+#include <functional>
 #include <iterator>
 #include <mutex>
 #include <stdexcept>
@@ -75,6 +76,10 @@ std::string_view string(const value& json) {
     return json.is<std::string>() ? std::string_view(json.get<std::string>()) : std::string_view{};
 }
 
+std::size_t token_count(const value& json) {
+    return json.is<double>() && json.get<double>() > 0 ? static_cast<std::size_t>(json.get<double>()) : 0;
+}
+
 bool parse_json(value& result, const std::string& encoded) {
     // PicoJSON uses recursion when parsing arrays and objects.
     int depth = 0;
@@ -130,7 +135,53 @@ array encode_archive_messages(const std::vector<Message>& messages) {
             }
             item.emplace("attachments", value(std::move(attachments)));
         }
+        if (!message.reasoning.empty()) {
+            item.emplace("reasoning", value(utf8(message.reasoning)));
+        }
+        if (!message.rounds.empty()) {
+            array rounds;
+            for (const auto& round : message.rounds) {
+                array calls;
+                for (const auto& call : round.calls) {
+                    calls.emplace_back(object{
+                        {"id", value(utf8(call.id))},
+                        {"name", value(utf8(call.name))},
+                        {"arguments", value(utf8(call.arguments))},
+                        {"result", value(utf8(call.result))},
+                        {"failed", value(call.failed)},
+                    });
+                }
+                rounds.emplace_back(object{{"text", value(utf8(round.text))}, {"calls", value(std::move(calls))}});
+            }
+            item.emplace("tool_rounds", value(std::move(rounds)));
+        }
         result.emplace_back(std::move(item));
+    }
+    return result;
+}
+
+std::vector<ToolRound> decode_rounds(const value& data) {
+    std::vector<ToolRound> result;
+    if (!data.is<array>()) {
+        return result;
+    }
+    for (const auto& entry : data.get<array>()) {
+        ToolRound round{wide(string(field(entry, "text")))};
+        const auto& calls = field(entry, "calls");
+        if (calls.is<array>()) {
+            for (const auto& call : calls.get<array>()) {
+                ToolCall item{wide(string(field(call, "id"))), wide(string(field(call, "name"))),
+                    wide(string(field(call, "arguments"))), wide(string(field(call, "result")))};
+                const auto& failed = field(call, "failed");
+                item.failed = failed.is<bool>() && failed.get<bool>();
+                if (!item.name.empty()) {
+                    round.calls.push_back(std::move(item));
+                }
+            }
+        }
+        if (!round.calls.empty()) {
+            result.push_back(std::move(round));
+        }
     }
     return result;
 }
@@ -165,7 +216,39 @@ value message_content(const Message& message, bool vision) {
     return value(std::move(images));
 }
 
-std::string encode_request(const Conversation& conversation, const Settings& settings, const std::string& alias) {
+// The assistant turns of an answer that used tools: each round's tool calls and their results,
+// then the final text.
+void encode_assistant(array& messages, const Message& message) {
+    for (const auto& round : message.rounds) {
+        array calls;
+        for (const auto& call : round.calls) {
+            calls.emplace_back(object{
+                {"id", value(utf8(call.id))},
+                {"type", value("function")},
+                {"function", value(object{{"name", value(utf8(call.name))}, {"arguments", value(utf8(call.arguments))}})},
+            });
+        }
+        messages.emplace_back(object{
+            {"role", value("assistant")},
+            {"content", round.text.empty() ? value() : value(utf8(round.text))},
+            {"tool_calls", value(std::move(calls))},
+        });
+        for (const auto& call : round.calls) {
+            messages.emplace_back(object{
+                {"role", value("tool")},
+                {"tool_call_id", value(utf8(call.id))},
+                {"content", value(utf8(call.result))},
+            });
+        }
+    }
+    if (!message.text.empty() || message.rounds.empty()) {
+        messages.emplace_back(object{{"role", value("assistant")}, {"content", value(utf8(message.text))}});
+    }
+}
+
+// tool_definitions: the enabled tools as the hub lists them (GET /tools), possibly empty.
+std::string encode_request(const Conversation& conversation, const Settings& settings, const std::string& alias,
+        const array& tool_definitions) {
     const auto& model = models.at(conversation.model);
     auto system = settings.system_prompt;
     if (!settings.memory.empty()) {
@@ -180,16 +263,24 @@ std::string encode_request(const Conversation& conversation, const Settings& set
         messages.emplace_back(object{{"role", value("system")}, {"content", value(utf8(system))}});
     }
     for (const auto& message : conversation.messages) {
-        messages.emplace_back(object{
-            {"role", value(message.from_user ? "user" : "assistant")},
-            {"content", message_content(message, supports_images(model))},
-        });
+        if (message.from_user) {
+            messages.emplace_back(object{
+                {"role", value("user")},
+                {"content", message_content(message, supports_images(model))},
+            });
+        } else {
+            encode_assistant(messages, message);
+        }
     }
     object body{
         {"model", value(alias)},
         {"messages", value(std::move(messages))},
         {"stream", value(true)},
+        {"stream_options", value(object{{"include_usage", value(true)}})},
     };
+    if (!tool_definitions.empty()) {
+        body.emplace("tools", value(tool_definitions));
+    }
     if (conversation.reasoning != Reasoning::preset) {
         body.emplace("reasoning_effort", value(levels.at(static_cast<std::size_t>(conversation.reasoning)).key));
     }
@@ -257,6 +348,10 @@ Conversation decode_conversation(const std::filesystem::path& path) {
             result.reasoning = effort;
         }
     }
+    const auto& context = field(data, "context_tokens");
+    if (context.is<double>() && context.get<double>() > 0) {
+        result.context_tokens = static_cast<std::size_t>(context.get<double>());
+    }
     const auto& messages = field(data, "messages");
     if (messages.is<array>()) {
         for (const auto& message : messages.get<array>()) {
@@ -281,7 +376,11 @@ Conversation decode_conversation(const std::filesystem::path& path) {
                     }
                 }
             }
-            if (!item.text.empty() || !item.attachments.empty()) {
+            if (!item.from_user) {
+                item.reasoning = wide(string(field(message, "reasoning")));
+                item.rounds = decode_rounds(field(message, "tool_rounds"));
+            }
+            if (!item.text.empty() || !item.attachments.empty() || !item.rounds.empty()) {
                 result.messages.push_back(std::move(item));
             }
         }
@@ -505,7 +604,7 @@ BackendProbe probe_backend(HINTERNET connection, const std::wstring& path, HANDL
 
 template <typename Publish>
 std::wstring wait_for_backend(HINTERNET connection, const Backend& backend, const Model& model,
-        HANDLE stop, HANDLE confirmed, Publish publish, std::string& alias) {
+        HANDLE stop, HANDLE confirmed, Publish publish, std::string& alias, std::size_t& context) {
     // The router loads the selected model for this endpoint without sending a chat message.
     const auto properties_path = L"/props?model=" + std::wstring(model.id);
     ProcessHandle process(nullptr, CloseHandle);
@@ -540,6 +639,7 @@ std::wstring wait_for_backend(HINTERNET connection, const Backend& backend, cons
         } else if (probe.status == 200) {
             alias = string(field(probe.properties, "model_alias"));
             if (alias == utf8(model.id)) {
+                context = token_count(field(field(probe.properties, "default_generation_settings"), "n_ctx"));
                 return {};
             }
             return L"The SAIAS hub is not serving " + std::wstring(model.id) + L". Run Install-SAIAS.cmd to install it.";
@@ -561,8 +661,30 @@ std::wstring wait_for_backend(HINTERNET connection, const Backend& backend, cons
     return L"The SAIAS backend took too long to start.";
 }
 
-template <typename Publish>
-std::wstring complete(HINTERNET connection, unsigned short port, std::string& body, HANDLE stop, Publish publish) {
+// Where a worker reports progress. Called on the worker thread.
+struct Sink {
+    std::function<void(BackendStatus)> backend;
+    std::function<void(LiveEvent)> event;
+    std::function<void(const Usage&)> usage;
+    std::function<void(std::size_t)> context;
+};
+
+struct StreamedCall {
+    std::string id;
+    std::string name;
+    std::string arguments;
+};
+
+// One model reply: its text and reasoning, the tools it wants to call, and the server's counts.
+struct RoundResult {
+    std::wstring text;
+    std::wstring reasoning;
+    std::vector<StreamedCall> calls;
+    std::optional<Usage> usage;
+};
+
+std::wstring stream_round(HINTERNET connection, unsigned short port, std::string& body, HANDLE stop,
+        RoundResult& round, const Sink& sink) {
     std::array<char, 8192> buffer{};
     Transfer transfer(WinHttpOpenRequest(connection, L"POST", completions_path, nullptr,
         WINHTTP_NO_REFERER, WINHTTP_DEFAULT_ACCEPT_TYPES, 0));
@@ -584,7 +706,6 @@ std::wstring complete(HINTERNET connection, unsigned short port, std::string& bo
         && std::wstring_view(response_type).find(L"text/event-stream") != std::wstring_view::npos;
 
     std::wstring error;
-    bool have_answer = false;
     bool done = false;
     bool finished_choice = false;
     std::size_t answer_size = 0;
@@ -594,25 +715,73 @@ std::wstring complete(HINTERNET connection, unsigned short port, std::string& bo
             return;
         }
         error = server_message(json);
+        if (!error.empty()) {
+            return;
+        }
+        // With stream_options.include_usage, the last chunk has the counts and no choices.
+        const auto& usage = field(json, "usage");
+        if (usage.is<object>()) {
+            Usage counts;
+            counts.prompt = token_count(field(usage, "prompt_tokens"));
+            counts.completion = token_count(field(usage, "completion_tokens"));
+            const auto& speed = field(field(json, "timings"), "predicted_per_second");
+            counts.speed = speed.is<double>() ? speed.get<double>() : 0;
+            round.usage = counts;
+        }
         const auto& choices = field(json, "choices");
-        if (!error.empty() || !choices.is<array>() || choices.get<array>().empty()) {
+        if (!choices.is<array>() || choices.get<array>().empty()) {
             return;
         }
         const auto& choice = choices.get<array>().front();
         const auto& delta = field(choice, sse ? "delta" : "message");
+        auto thought = string(field(delta, "reasoning_content"));
+        if (thought.empty()) {
+            thought = string(field(delta, "reasoning"));
+        }
+        if (!thought.empty()) {
+            auto text = wide(thought);
+            round.reasoning += text;
+            sink.event({LiveEvent::Kind::reasoning, std::move(text)});
+        }
         const auto text = string(field(delta, "content"));
-        const bool thinking = !string(field(delta, "reasoning_content")).empty()
-            || !string(field(delta, "reasoning")).empty();
         if (!text.empty()) {
             answer_size += text.size();
             if (answer_size > archive_limit) {
                 error = L"The local server sent a response that was too large.";
                 return;
             }
-            have_answer = true;
-            publish(wide(text), false);
-        } else if (thinking && !have_answer) {
-            publish({}, true);
+            auto piece = wide(text);
+            round.text += piece;
+            sink.event({LiveEvent::Kind::text, std::move(piece)});
+        }
+        // Tool calls arrive in pieces: the first names the call, the next ones extend its arguments.
+        const auto& calls = field(delta, "tool_calls");
+        if (calls.is<array>()) {
+            std::size_t position = 0;
+            for (const auto& call : calls.get<array>()) {
+                const auto& index = field(call, "index");
+                const auto slot = index.is<double>() ? static_cast<std::size_t>(index.get<double>()) : position;
+                ++position;
+                if (slot >= 32) {
+                    continue;
+                }
+                if (round.calls.size() <= slot) {
+                    round.calls.resize(slot + 1);
+                }
+                auto& target = round.calls[slot];
+                if (const auto id = string(field(call, "id")); !id.empty()) {
+                    target.id = id;
+                }
+                const auto& function = field(call, "function");
+                if (const auto name = string(field(function, "name")); !name.empty()) {
+                    target.name = name;
+                }
+                target.arguments += string(field(function, "arguments"));
+                if (target.arguments.size() > 1024 * 1024) {
+                    error = L"The model wrote tool arguments that were too large.";
+                    return;
+                }
+            }
         }
         if (!string(field(choice, "finish_reason")).empty()) {
             finished_choice = true;
@@ -671,15 +840,108 @@ std::wstring complete(HINTERNET connection, unsigned short port, std::string& bo
     } else if (!done && !finished_choice && error.empty()) {
         return L"The local server closed the reply before it finished.";
     }
-    if (error.empty() && !have_answer) {
+    // Calls without a name cannot be run: drop them.
+    std::erase_if(round.calls, [](const StreamedCall& call) { return call.name.empty(); });
+    if (error.empty() && round.text.empty() && round.calls.empty()) {
         return L"The model returned no final answer.";
     }
     return error;
 }
 
-template <typename SetBackendStatus, typename Publish>
+// Sends a JSON body and reads the JSON reply (the hub's tool endpoint).
+struct Posted {
+    DWORD error = ERROR_SUCCESS;
+    DWORD status = 0;
+    value json;
+};
+
+Posted post_json(HINTERNET connection, const wchar_t* path, std::string& body, HANDLE stop) {
+    Transfer transfer(WinHttpOpenRequest(connection, L"POST", path, nullptr,
+        WINHTTP_NO_REFERER, WINHTTP_DEFAULT_ACCEPT_TYPES, 0));
+    Posted result;
+    constexpr auto headers = L"Content-Type: application/json\r\n";
+    if (!transfer.begin(headers, body.data(), static_cast<DWORD>(body.size()), stop)) {
+        result.error = transfer.error;
+        return result;
+    }
+    result.status = transfer.status_code();
+    std::array<char, 8192> buffer{};
+    std::string reply;
+    while (reply.size() < 8 * 1024 * 1024) {
+        if (!transfer.wait(WinHttpReadData(transfer.handle, buffer.data(), static_cast<DWORD>(buffer.size()), nullptr),
+                WINHTTP_CALLBACK_STATUS_READ_COMPLETE, stop)) {
+            result.error = transfer.error;
+            return result;
+        }
+        if (!transfer.bytes) {
+            parse_json(result.json, reply);
+            return result;
+        }
+        reply.append(buffer.data(), transfer.bytes);
+    }
+    result.error = ERROR_INVALID_DATA;
+    return result;
+}
+
+constexpr std::size_t tool_result_limit = 24000;
+
+// Runs one tool through the hub and returns what the model gets back.
+ToolCall run_tool(HINTERNET connection, unsigned short port, const StreamedCall& call, HANDLE stop) {
+    ToolCall result{wide(call.id), wide(call.name), wide(call.arguments)};
+    value arguments;
+    if (call.arguments.empty()) {
+        arguments = value(object{});
+    } else if (!parse_json(arguments, call.arguments) || !arguments.is<object>()) {
+        result.failed = true;
+        result.result = L"The tool arguments were not valid JSON. Call the tool again with a JSON object.";
+        return result;
+    }
+    auto body = value(object{{"tool", value(call.name)}, {"params", arguments}}).serialize();
+    auto posted = post_json(connection, L"/tools", body, stop);
+    if (posted.error) {
+        result.failed = true;
+        result.result = posted.error == ERROR_WINHTTP_OPERATION_CANCELLED ? L"Stopped." : error_message(posted.error, port);
+        return result;
+    }
+    const auto text = string(field(posted.json, "plain_text_response"));
+    if (posted.status != 200 || text.empty()) {
+        result.failed = true;
+        auto message = server_message(posted.json);
+        result.result = L"The tool failed" + (message.empty() ? L" (HTTP " + std::to_wstring(posted.status) + L")." : L": " + message);
+        return result;
+    }
+    result.result = wide(text);
+    if (result.result.size() > tool_result_limit) {
+        result.result.resize(tool_result_limit);
+        result.result += L"\n[Truncated: the tool returned more text than fits here.]";
+    }
+    return result;
+}
+
+// The enabled tools' definitions, as the hub lists them. Empty when tools are off or unavailable.
+array tool_definitions(HINTERNET connection, const Settings& settings, HANDLE stop) {
+    array result;
+    if (settings.tools.empty()) {
+        return result;
+    }
+    const auto listed = probe_backend(connection, L"/tools", stop);
+    if (listed.error || listed.status != 200 || !listed.properties.is<array>()) {
+        return result;
+    }
+    for (const auto& item : listed.properties.get<array>()) {
+        const auto& definition = field(item, "definition");
+        if (definition.is<object>() && settings.tool_enabled(wide(string(field(item, "tool"))))) {
+            result.push_back(definition);
+        }
+    }
+    return result;
+}
+
+constexpr int max_tool_rounds = 8;
+
+// reply receives the answer as it is built, also when the request stops early.
 std::wstring run_request(const Conversation& conversation, const Settings& settings, HANDLE stop, HANDLE confirmed,
-        SetBackendStatus set_backend_status, Publish publish) {
+        const Sink& sink, Message& reply) {
     const auto& model = models.at(conversation.model);
     const auto backend = find_backend();
     // Both the readiness checks and the chat request use the same fixed loopback endpoint.
@@ -694,16 +956,56 @@ std::wstring run_request(const Conversation& conversation, const Settings& setti
         return error_message(GetLastError(), backend.port);
     }
     std::string alias;
-    auto error = wait_for_backend(connection.handle, backend, model, stop, confirmed, set_backend_status, alias);
+    std::size_t context = 0;
+    auto error = wait_for_backend(connection.handle, backend, model, stop, confirmed, sink.backend, alias, context);
     if (!error.empty() || WaitForSingleObject(stop, 0) != WAIT_TIMEOUT) {
         return error;
     }
-    auto body = encode_request(conversation, settings, alias);
-    if (body.size() > archive_limit) {
-        return L"This conversation is too large to send. Start a new conversation.";
+    if (context) {
+        sink.context(context);
     }
-    set_backend_status(BackendStatus::ready);
-    return complete(connection.handle, backend.port, body, stop, publish);
+    const auto definitions = tool_definitions(connection.handle, settings, stop);
+    sink.backend(BackendStatus::ready);
+
+    for (int step = 0;; ++step) {
+        auto request = conversation;
+        if (!reply.rounds.empty()) {
+            request.messages.push_back(reply);
+        }
+        // After the last allowed round the tools are left out, so the model has to answer.
+        auto body = encode_request(request, settings, alias, step < max_tool_rounds ? definitions : array{});
+        if (body.size() > archive_limit) {
+            return L"This conversation is too large to send. Start a new conversation.";
+        }
+        RoundResult round;
+        error = stream_round(connection.handle, backend.port, body, stop, round, sink);
+        if (round.usage) {
+            sink.usage(*round.usage);
+        }
+        if (!round.reasoning.empty()) {
+            reply.reasoning += (reply.reasoning.empty() ? L"" : L"\n\n") + round.reasoning;
+        }
+        if (!error.empty() || round.calls.empty()) {
+            reply.text += round.text;
+            return error;
+        }
+        ToolRound done{round.text};
+        for (std::size_t i = 0; i < round.calls.size(); ++i) {
+            auto call = round.calls[i];
+            if (call.id.empty()) {
+                call.id = "call_" + std::to_string(step) + "_" + std::to_string(i);
+            }
+            sink.event({LiveEvent::Kind::tool_start, wide(call.name), wide(call.arguments)});
+            auto result = run_tool(connection.handle, backend.port, call, stop);
+            sink.event({LiveEvent::Kind::tool_done, result.name, result.result, result.failed});
+            done.calls.push_back(std::move(result));
+            if (WaitForSingleObject(stop, 0) != WAIT_TIMEOUT) {
+                reply.rounds.push_back(std::move(done));
+                return {};
+            }
+        }
+        reply.rounds.push_back(std::move(done));
+    }
 }
 
 } // namespace
@@ -730,6 +1032,50 @@ void set_image_support(std::wstring_view id, bool supported) {
             image_support[i] = supported ? 1 : 0;
         }
     }
+}
+
+namespace {
+
+std::array<std::atomic<std::size_t>, models.size()> context_sizes{};
+
+} // namespace
+
+void set_context_size(std::wstring_view id, std::size_t tokens) {
+    for (std::size_t i = 0; i < models.size(); ++i) {
+        if (models[i].id == id && tokens) {
+            context_sizes[i] = tokens;
+        }
+    }
+}
+
+std::size_t context_size(const Model& model) {
+    for (std::size_t i = 0; i < models.size(); ++i) {
+        if (models[i].id == model.id) {
+            return context_sizes[i];
+        }
+    }
+    return 0;
+}
+
+bool Settings::tool_enabled(std::wstring_view name) const {
+    return std::find(tools.begin(), tools.end(), name) != tools.end();
+}
+
+std::size_t estimate_tokens(const Conversation& conversation) {
+    std::size_t characters = 0;
+    for (const auto& message : conversation.messages) {
+        characters += message.text.size();
+        for (const auto& attachment : message.attachments) {
+            characters += attachment.text.size();
+        }
+        for (const auto& round : message.rounds) {
+            characters += round.text.size();
+            for (const auto& call : round.calls) {
+                characters += call.arguments.size() + call.result.size();
+            }
+        }
+    }
+    return characters / 4;
 }
 
 bool supports_images(const Model& model) {
@@ -816,22 +1162,41 @@ bool Archive::save(const Conversation& conversation) const {
     return write_json(directory_ / (conversation.id + L".json"), value(object{
         {"model", value(utf8(models.at(conversation.model).id))},
         {"reasoning", value(levels.at(static_cast<std::size_t>(conversation.reasoning)).key)},
+        {"context_tokens", value(static_cast<double>(conversation.context_tokens))},
         {"messages", value(encode_archive_messages(conversation.messages))},
     }), archive_limit);
 }
 
 Settings Archive::load_settings() const {
+    Settings result;
     if (directory_.empty()) {
-        return {};
+        return result;
     }
     const auto data = read_json(directory_.parent_path() / L"settings.json", settings_limit);
-    return {wide(string(field(data, "memory"))), wide(string(field(data, "system_prompt")))};
+    result.memory = wide(string(field(data, "memory")));
+    result.system_prompt = wide(string(field(data, "system_prompt")));
+    // Settings saved before tools existed keep the default: every tool on.
+    const auto& enabled = field(data, "tools");
+    if (enabled.is<array>()) {
+        result.tools.clear();
+        for (const auto& name : enabled.get<array>()) {
+            if (!string(name).empty()) {
+                result.tools.push_back(wide(string(name)));
+            }
+        }
+    }
+    return result;
 }
 
 bool Archive::save_settings(const Settings& settings) const {
+    array enabled;
+    for (const auto& name : settings.tools) {
+        enabled.emplace_back(utf8(name));
+    }
     return !directory_.empty() && write_json(directory_.parent_path() / L"settings.json", value(object{
         {"memory", value(utf8(settings.memory))},
         {"system_prompt", value(utf8(settings.system_prompt))},
+        {"tools", value(std::move(enabled))},
     }), settings_limit);
 }
 
@@ -845,19 +1210,36 @@ struct Request::State {
 Request::Request(Conversation conversation, const Settings& settings) : state_(std::make_shared<State>()),
     worker_([state = state_, conversation = std::move(conversation), settings] {
         std::wstring error;
+        Message reply{false, L""};
         try {
             if (!state->cancel.handle || !state->confirmed.handle) {
                 error = L"Could not initialize the local request.";
             } else {
-                error = run_request(conversation, settings, state->cancel.handle, state->confirmed.handle,
-                    [&](BackendStatus status) {
-                        std::lock_guard lock(state->mutex);
-                        state->update.backend = status;
-                    }, [&](std::wstring text, bool thinking) {
-                        std::lock_guard lock(state->mutex);
-                        state->update.text += text;
-                        state->update.thinking = thinking;
-                    });
+                Sink sink;
+                sink.backend = [&](BackendStatus status) {
+                    std::lock_guard lock(state->mutex);
+                    state->update.backend = status;
+                };
+                sink.event = [&](LiveEvent event) {
+                    std::lock_guard lock(state->mutex);
+                    // Consecutive deltas of the same kind are merged: the view takes them in batches.
+                    auto& events = state->update.events;
+                    const bool delta = event.kind == LiveEvent::Kind::text || event.kind == LiveEvent::Kind::reasoning;
+                    if (delta && !events.empty() && events.back().kind == event.kind) {
+                        events.back().text += event.text;
+                    } else {
+                        events.push_back(std::move(event));
+                    }
+                };
+                sink.usage = [&](const Usage& usage) {
+                    std::lock_guard lock(state->mutex);
+                    state->update.usage = usage;
+                };
+                sink.context = [&](std::size_t tokens) {
+                    std::lock_guard lock(state->mutex);
+                    state->update.context_size = tokens;
+                };
+                error = run_request(conversation, settings, state->cancel.handle, state->confirmed.handle, sink, reply);
             }
         } catch (const std::exception&) {
             error = L"The local request could not be completed.";
@@ -866,6 +1248,10 @@ Request::Request(Conversation conversation, const Settings& settings) : state_(s
         state->update.stopped = state->cancel.handle && WaitForSingleObject(state->cancel.handle, 0) == WAIT_OBJECT_0;
         if (!state->update.stopped) {
             state->update.error = std::move(error);
+        }
+        // Whatever was written is kept, also when the reply stopped or failed half-way.
+        if (!reply.text.empty() || !reply.rounds.empty()) {
+            state->update.reply = std::move(reply);
         }
         state->update.finished = true;
     }) {}
