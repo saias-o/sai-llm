@@ -110,8 +110,10 @@ function extractArchives(archiveFiles, dest, binary) {
   try {
     for (const archive of archiveFiles) {
       const tmp = fs.mkdtempSync(path.join(staging, 'a-'));
-      if (/\.zip$/i.test(archive) && process.platform !== 'win32') execFileSync('unzip', ['-q', archive, '-d', tmp]);
-      else execFileSync(tarCommand(), ['-xf', archive, '-C', tmp], { windowsHide: true });
+      // File times are not restored (unzip -DD, tar -m): exFAT and FAT drives reject the times
+      // Windows tar tries to set, which fails the whole extraction although every file is there.
+      if (/\.zip$/i.test(archive) && process.platform !== 'win32') execFileSync('unzip', ['-q', '-DD', archive, '-d', tmp]);
+      else execFileSync(tarCommand(), ['-m', '-xf', archive, '-C', tmp], { windowsHide: true });
       const bin = findFile(tmp, binary);
       let root = bin ? path.dirname(bin) : tmp;
       if (!bin) {
