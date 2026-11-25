@@ -104,9 +104,9 @@ function findFile(dir, name) {
 
 // Extracts archives into dest. Archives may wrap their files in a folder: the folder that
 // contains the binary (or, for archives without it, the top level) is what gets copied.
-function extractArchives(archiveFiles, dest, binary) {
-  fs.mkdirSync(paths.downloads, { recursive: true });
-  const staging = fs.mkdtempSync(path.join(paths.downloads, 'extract-'));
+function extractArchives(archiveFiles, dest, binary, downloadDir = paths.downloads) {
+  fs.mkdirSync(downloadDir, { recursive: true });
+  const staging = fs.mkdtempSync(path.join(downloadDir, 'extract-'));
   try {
     for (const archive of archiveFiles) {
       const tmp = fs.mkdtempSync(path.join(staging, 'a-'));

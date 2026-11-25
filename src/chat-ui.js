@@ -9,6 +9,9 @@
 //   GET    /saias/chat/api/settings        memory, system prompt, enabled tools
 //   PUT    /saias/chat/api/settings
 //   POST   /saias/chat/api/extract         PDF bytes in, text out (attachments)
+//   GET    /saias/chat/api/images          local image generator availability
+//   POST   /saias/chat/api/images          generate a 512 × 512 image
+//   GET    /saias/chat/api/images/<conversation>/<image>.png
 // Conversations are the same JSON files the SAIAS app's native chat uses, in
 // <standard SAIAS folder>/Conversations, so both show the same history.
 // Models, tools and chat completions come from the hub's usual endpoints (/v1/models, /tools,
@@ -17,9 +20,11 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const paths = require('./paths');
+const image = require('./image');
 
 const PAGE_DIR = path.join(paths.ROOT, 'ui', 'chat');
 const DATA_DIR = path.join(paths.standard, 'Conversations');
+const IMAGE_DIR = path.join(DATA_DIR, 'images');
 const SETTINGS = path.join(paths.standard, 'settings.json');
 const LIMIT = 32 * 1024 * 1024;
 const TYPES = {
@@ -32,6 +37,7 @@ const TYPES = {
 };
 // The native app names conversations with a GUID in braces.
 const ID = /^[{}A-Za-z0-9-]{1,64}$/;
+const PNG = /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}\.png$/;
 
 function send(res, code, value, type = 'application/json; charset=utf-8') {
   const body = Buffer.isBuffer(value) ? value : Buffer.from(typeof value === 'string' ? value : JSON.stringify(value));
@@ -104,7 +110,7 @@ function extractPdf(buf) {
 }
 
 // Returns true when the request was for SAIAS Chat.
-async function handle(req, res, pathname) {
+async function handle(req, res, pathname, prepareImage) {
   if (pathname !== '/saias/chat' && !pathname.startsWith('/saias/chat/')) return false;
   if (!localHost(req)) { fail(res, 403, 'SAIAS Chat is only available on this computer.'); return true; }
   if (pathname === '/saias/chat') {
@@ -115,7 +121,7 @@ async function handle(req, res, pathname) {
   const rest = pathname.slice('/saias/chat/'.length);
   try {
     if (rest.startsWith('api/')) {
-      await api(req, res, rest.slice(4));
+      await api(req, res, rest.slice(4), prepareImage);
     } else {
       page(req, res, rest || 'index.html');
     }
@@ -132,7 +138,8 @@ function page(req, res, name) {
   send(res, 200, fs.readFileSync(file), TYPES[path.extname(file).toLowerCase()] || 'application/octet-stream');
 }
 
-async function api(req, res, route) {
+async function api(req, res, route, prepareImage) {
+  if (route === 'images' || route.startsWith('images/')) return images(req, res, route, prepareImage);
   if (route === 'conversations' && req.method === 'GET') return send(res, 200, listConversations());
 
   const match = route.match(/^conversations\/([^/]+)$/);
@@ -151,7 +158,10 @@ async function api(req, res, route) {
       return send(res, 200, { saved: true });
     }
     if (req.method === 'DELETE') {
+      const dir = path.join(IMAGE_DIR, id);
+      if (image.busy(dir)) return fail(res, 409, 'Stop image generation before deleting this conversation.');
       fs.rmSync(file, { force: true });
+      fs.rmSync(dir, { recursive: true, force: true });
       return send(res, 200, { deleted: true });
     }
   }
@@ -167,6 +177,7 @@ async function api(req, res, route) {
       const clean = {
         memory: String(data.memory || ''),
         system_prompt: String(data.system_prompt || ''),
+        image_tool: data.image_tool !== false,
         tools: Array.isArray(data.tools) ? data.tools.map(String) : ['web_search', 'web_fetch', 'web_research'],
       };
       writeJson(SETTINGS, clean);
@@ -183,6 +194,46 @@ async function api(req, res, route) {
   }
 
   return fail(res, 404, 'Not found');
+}
+
+async function images(req, res, route, prepare) {
+  if (!['127.0.0.1', '::1', '::ffff:127.0.0.1'].includes(req.socket.remoteAddress)) {
+    return fail(res, 403, 'Image generation is only available on this computer.');
+  }
+  if (route === 'images' && req.method === 'GET') return send(res, 200, image.status());
+  if (route === 'images' && req.method === 'POST') {
+    if (req.headers['x-saias'] !== '1') return fail(res, 403, 'Missing X-SAIAS header');
+    const body = await readBody(req, 16 * 1024);
+    let data;
+    try { data = JSON.parse(body); } catch { return fail(res, 400, 'Invalid JSON'); }
+    if (typeof data?.conversation !== 'string' || !ID.test(data.conversation)) return fail(res, 400, 'Invalid conversation id');
+    const prompt = typeof data.prompt === 'string' ? data.prompt.trim() : '';
+    if (!prompt || prompt.length > 2000 || prompt.includes('\0')) return fail(res, 400, 'Enter a prompt of 1–2,000 characters.');
+    if (/<lora:/i.test(prompt)) return fail(res, 400, 'LoRA tags are not supported by saias-image.');
+
+    const controller = new AbortController();
+    const disconnect = () => controller.abort();
+    res.once('close', disconnect);
+    try {
+      const result = await image.generate(prompt, path.join(IMAGE_DIR, data.conversation), { signal: controller.signal, prepare });
+      return send(res, 200, result);
+    } catch (error) {
+      if (controller.signal.aborted) return;
+      if (!error.status) console.error('saias-image:', error.message);
+      const message = error.name === 'TimeoutError' ? 'Image generation timed out.' : 'Image generation failed. See the SAIAS hub log.';
+      return fail(res, error.status || 500, error.status ? error.message : message);
+    } finally { res.off('close', disconnect); }
+  }
+  const [prefix, conversation, name, extra] = route.split('/');
+  if (req.method === 'GET' && prefix === 'images' && !extra && conversation && name) {
+    let id;
+    try { id = decodeURIComponent(conversation); } catch { return fail(res, 400, 'Invalid conversation id'); }
+    if (ID.test(id) && PNG.test(name)) {
+      try { return send(res, 200, fs.readFileSync(path.join(IMAGE_DIR, id, name)), 'image/png'); }
+      catch (error) { if (error.code !== 'ENOENT') throw error; }
+    }
+  }
+  return fail(res, 404, 'Image not found');
 }
 
 module.exports = { handle, DATA_DIR };

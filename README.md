@@ -69,6 +69,7 @@ SAIAS builds on the same llama.cpp engine. Ollama, LM Studio and Jan are better 
 | `saias update` | Fetches the latest catalog and installs the newer models it selects for this PC. `--check` only reports. |
 | `saias rollback` | Returns to the models installed before the last update. |
 | `saias adopt <folder>` | Registers runtimes and model files already on disk. `--move` moves them into the SAIAS folder (same drive only), `--verify` checks their sha256. |
+| `saias install-image [folder]` | Installs the local image generator for SAIAS Chat on Windows x64. Pass a folder to store its model and runtimes on another drive. |
 | `saias status` | Shows the hardware, the installed profiles, their measured speed and the hub state. `--json` for scripts. |
 | `saias recommend` | Shows which profile suits this PC best, from the catalog and measured speeds. `--json` for scripts. |
 | `saias clean` | Deletes files no installed or previous profile uses. |
@@ -106,6 +107,14 @@ The installer picks the first variant the PC can run, and preselects every profi
 | `saias-pro` | Inkling 2 Mini UD-Q4_K_XL, images | llama.cpp b12631: CUDA, Metal | 500,000 (200,000 on Metal) | NVIDIA GPU with 8 GB VRAM and 32 GB RAM, or Apple Silicon with 48 GB |
 
 `saias-flash` is fast but small: use it for chat, and `saias-smart` or `saias-pro` for agent and coding work. Model licenses are shown, and must be accepted, during installation.
+
+## Image generation in SAIAS Chat
+
+On Windows x64, run `saias install-image` or pass a storage folder with `saias install-image D:\SAIAS-image`. The installer verifies DreamShaper 8 LCM Q5_1 and the stable-diffusion.cpp runtimes. The model takes about 1.69 GB on disk and uses the [CreativeML OpenRAIL-M license](https://huggingface.co/spaces/CompVis/stable-diffusion-license).
+
+In SAIAS Chat, choose **Create image**, enter a prompt, and send it. The chat model can also use **Create image** from its Tools menu when you ask for an image. Prompts stay on the PC. `saias-image` generates 512 × 512 PNGs, with a CPU fallback when Vulkan is unavailable. The generated images stay with the conversation and can be downloaded from the chat.
+
+If you install only `saias-image`, `saias start --open` opens SAIAS Chat in image mode.
 
 ## Web search
 

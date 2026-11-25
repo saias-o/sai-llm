@@ -28,6 +28,7 @@ const paths = require('./paths');
 const catalogs = require('./catalog');
 const store = require('./store');
 const llama = require('./llama');
+const image = require('./image');
 
 // Backends always listen on the loopback address. The hub does too, unless SAIAS_HUB_HOST opens
 // it to the network, which requires SAIAS_API_KEY.
@@ -52,7 +53,10 @@ function log(...args) { console.log(new Date().toLocaleTimeString(), ...args); }
 function loadProfiles() {
   const catalog = catalogs.installed();
   const state = store.load();
-  if (!catalog || !Object.keys(state.profiles).length) throw new Error('SAIAS is not installed. Run Install-SAIAS.cmd (or "saias install") first.');
+  if (!catalog || !Object.keys(state.profiles).length) {
+    if (image.status().ready) return {};
+    throw new Error('SAIAS is not installed. Run Install-SAIAS.cmd (or "saias install") first.');
+  }
   for (const [id, entry] of Object.entries(state.profiles)) {
     const variant = catalog.profiles[id]?.variants.find(v => v.id === entry.variant);
     if (!variant) { log(`saias-${id}: variant ${entry.variant} not in the catalog, skipped`); continue; }
@@ -69,7 +73,10 @@ function loadProfiles() {
       status: 'unloaded', failed: null, port: null, proc: null, loading: null,
     });
   }
-  if (!profiles.size) throw new Error('No installed profile can start. Run "saias install".');
+  if (!profiles.size) {
+    if (image.status().ready) return {};
+    throw new Error('No installed profile can start. Run "saias install".');
+  }
   const uiRuntimeId = (catalog.hub?.uiRuntimes || []).find(rid => catalog.runtimes[rid] && store.runtimeDir(state, rid, catalog.runtimes[rid]));
   if (!uiRuntimeId) throw new Error('No installed runtime can serve Llama Chat. Run "saias install".');
   const uiRuntime = catalog.runtimes[uiRuntimeId];
@@ -168,6 +175,8 @@ function setStatus(p, status, failure = null) {
 }
 
 async function load(p) {
+  const imageJob = EXCLUSIVE && image.wait();
+  if (imageJob) await imageJob;
   if (p.status === 'loaded' && p.proc?.exited === null) return;
   if (p.loading) return p.loading;
   p.loading = (async () => {
@@ -195,6 +204,13 @@ async function unload(p) {
   setStatus(p, 'unloaded');
   await stop(p.proc);
   p.proc = null;
+}
+
+async function prepareImage() {
+  if (!EXCLUSIVE) return;
+  const running = [...profiles.values()];
+  await Promise.allSettled(running.map(profile => profile.loading));
+  await Promise.all(running.filter(profile => profile.status !== 'unloaded').map(unload));
 }
 
 function modelEntry(p) {
@@ -290,7 +306,7 @@ async function handle(req, res) {
   if (req.method === 'GET' && (p === '/v1/models' || p === '/models')) {
     return send(res, 200, { object: 'list', data: [...profiles.values()].map(modelEntry) });
   }
-  if (req.method === 'GET' && p === '/models/sse') return modelEvents(req, res);
+  if (ui && req.method === 'GET' && p === '/models/sse') return modelEvents(req, res);
   if (req.method === 'POST' && p === '/saias/stop') {
     // A custom header cannot be sent cross-origin without a CORS preflight, which the hub never
     // grants: web pages cannot stop SAIAS.
@@ -299,9 +315,14 @@ async function handle(req, res) {
     log('Stop requested.');
     return setTimeout(() => shutdown(0), 100);
   }
-  if (await require('./chat-ui').handle(req, res, p)) return;
+  if (await require('./chat-ui').handle(req, res, p, prepareImage)) return;
   if (req.method === 'GET' && p === '/saias/status') {
     return send(res, 200, { port: PORT, exclusive: EXCLUSIVE, profiles: [...profiles.values()].map(x => ({ id: x.name, status: x.status, model: x.model.name, variant: x.variant.id })) });
+  }
+  if (!ui) {
+    if (p === '/') { res.writeHead(302, { Location: '/saias/chat/' }); res.end(); return; }
+    if (req.method === 'GET' && p === '/tools') return send(res, 200, []);
+    return sendError(res, 404, 'No text model is installed. Open SAIAS Chat to generate images.');
   }
 
   let body = req.method === 'POST' && /json/i.test(req.headers['content-type'] || '') ? await readBody(req) : null;
@@ -326,6 +347,8 @@ async function handle(req, res) {
     return forward(req, res, ui.port, body);
   }
 
+  const imageJob = EXCLUSIVE && image.wait();
+  if (imageJob) await imageJob;
   if (target.status !== 'loaded') {
     if (url.searchParams.get('autoload') === 'false') return sendError(res, 400, 'model is not loaded');
     if (req.method === 'GET' && p === '/props') {
@@ -345,13 +368,16 @@ async function handle(req, res) {
 
 // ---------------------------------------------------------------- lifecycle
 
-function shutdown(code = 0) {
+async function shutdown(code = 0) {
+  const imageJob = image.wait();
+  image.stop();
   for (const proc of children) {
     try {
       if (process.platform === 'win32') execFileSync('taskkill', ['/PID', String(proc.pid), '/T', '/F'], { stdio: 'ignore', windowsHide: true });
       else process.kill(-proc.pid, 'SIGTERM');
     } catch { /* already gone */ }
   }
+  if (imageJob) await Promise.race([imageJob, delay(1500)]);
   process.exit(code);
 }
 
@@ -383,6 +409,21 @@ async function start({ open = false } = {}) {
   process.on('SIGTERM', () => shutdown());
   process.on('SIGHUP', () => shutdown());
 
+  if (uiExe) await startRouter(uiExe);
+
+  const server = http.createServer((req, res) => {
+    handle(req, res).catch(e => { if (!res.headersSent) sendError(res, 500, e.message); else res.destroy(); });
+  });
+  server.requestTimeout = 0;
+  server.on('error', e => { log(`Cannot listen on ${url}: ${e.message}`); shutdown(1); });
+  server.listen(PORT, BIND, () => {
+    log(`SAIAS hub ready - ${url}  (${ui ? [...profiles.keys()].join(', ') : 'saias-image'})`);
+    if (ui) log(`OpenAI-compatible endpoint: ${url}v1. Press Ctrl+C to stop SAIAS and its models.`);
+    if (open) openBrowser(url);
+  });
+}
+
+async function startRouter(uiExe) {
   // Llama Chat and the web tools: a router-mode llama-server with an empty model list.
   fs.mkdirSync(paths.home, { recursive: true });
   const presets = path.join(paths.home, 'ui-presets.ini');
@@ -395,16 +436,6 @@ async function start({ open = false } = {}) {
   ui = { port: uiPort, proc: uiProc };
   uiProc.once('exit', code => { log(`The Llama Chat server stopped (code ${code}). Log: ${uiProc.logFile}`); shutdown(1); });
 
-  const server = http.createServer((req, res) => {
-    handle(req, res).catch(e => { if (!res.headersSent) sendError(res, 500, e.message); else res.destroy(); });
-  });
-  server.requestTimeout = 0;
-  server.on('error', e => { log(`Cannot listen on ${url}: ${e.message}`); shutdown(1); });
-  server.listen(PORT, BIND, () => {
-    log(`SAIAS hub ready - ${url}  (${[...profiles.keys()].join(', ')})`);
-    log(`OpenAI-compatible endpoint: ${url}v1. Press Ctrl+C to stop SAIAS and its models.`);
-    if (open) openBrowser(url);
-  });
 }
 
 module.exports = { start };

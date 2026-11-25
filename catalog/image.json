@@ -1,0 +1,25 @@
+{
+  "id": "saias-image",
+  "name": "DreamShaper 8 LCM Q5_1",
+  "license": "https://huggingface.co/spaces/CompVis/stable-diffusion-license",
+  "model": {
+    "name": "LCM_Dreamshaper_v8-q5_1.gguf",
+    "url": "https://huggingface.co/acojaco/dreamshaper-lcm-gguf/resolve/0c0cc988773d38a5b86746295515caa459961b17/LCM_Dreamshaper_v8-q5_1.gguf",
+    "size": 1691683968,
+    "sha256": "1463feb9c7786295a04a80fb931cb33c041cc5b0c2e1eed534c1e80afd2dad83"
+  },
+  "runtimes": {
+    "vulkan": {
+      "name": "sd-master-9cdb6b6-bin-win-vulkan-x64.zip",
+      "url": "https://github.com/leejet/stable-diffusion.cpp/releases/download/master-848-9cdb6b6/sd-master-9cdb6b6-bin-win-vulkan-x64.zip",
+      "size": 38862668,
+      "sha256": "7581b4acae399f2496d870c8de4b4b4dd85d88d7e144cd9467d49b680ff7a46c"
+    },
+    "cpu": {
+      "name": "sd-master-9cdb6b6-bin-win-cpu-x64.zip",
+      "url": "https://github.com/leejet/stable-diffusion.cpp/releases/download/master-848-9cdb6b6/sd-master-9cdb6b6-bin-win-cpu-x64.zip",
+      "size": 24112499,
+      "sha256": "6233788106be840bec43007c01d1ecef592bf8f336ad5213ead06e75389368c4"
+    }
+  }
+}

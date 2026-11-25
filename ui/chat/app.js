@@ -5,6 +5,13 @@
 const MAX_TOOL_ROUNDS = 8;
 const TOOL_RESULT_LIMIT = 24000;
 const API = '/saias/chat/api';
+const IMAGE_MODEL = 'saias-image';
+const IMAGE_TOOL = 'generate_image';
+const IMAGE_DEFINITION = { type: 'function', function: {
+  name: IMAGE_TOOL,
+  description: 'Create a new image from text using saias-image. Use only when the user asks for an image. Write a descriptive English prompt with the desired subject, composition and style.',
+  parameters: { type: 'object', properties: { prompt: { type: 'string' } }, required: ['prompt'] },
+} };
 const LEVEL_LABELS = { none: 'Off', minimal: 'Minimal', low: 'Low', medium: 'Medium', high: 'High', xhigh: 'Extra high' };
 const TOOL_LABELS = { web_search: 'Web search', web_fetch: 'Read web pages', web_research: 'Web research' };
 const TOOL_HINTS = {
@@ -44,6 +51,8 @@ const state = {
   busy: null,         // { controller, reply, base, chars }
   attachments: [],    // pending: { name, text?, image_url?, size, kind }
   speed: null,        // { value, id }
+  imageMode: false,
+  image: { supported: false, ready: false },
   lastModel: localStorage.getItem('saias.model') || 'saias-flash',
 };
 
@@ -100,6 +109,7 @@ function modelInfo(id) {
 }
 
 function toolLabel(name) {
+  if (name === IMAGE_TOOL) return 'Create image';
   return TOOL_LABELS[name] || name;
 }
 
@@ -117,6 +127,8 @@ async function loadTools() {
   } catch {
     state.tools = [];
   }
+  try { state.image = await api(`${API}/images`); } catch { /* older hub */ }
+  if (state.image.ready) state.tools.push({ definition: IMAGE_DEFINITION });
 }
 
 async function loadSettings() {
@@ -125,6 +137,7 @@ async function loadSettings() {
     state.settings = {
       memory: s.memory || '',
       system_prompt: s.system_prompt || '',
+      image_tool: s.image_tool !== false,
       tools: Array.isArray(s.tools) ? s.tools : state.settings.tools,
     };
   } catch { /* defaults */ }
@@ -136,7 +149,7 @@ async function loadList() {
 }
 
 function blankConversation() {
-  const model = modelInfo(state.lastModel) ? state.lastModel : (state.models[0]?.id || 'saias-flash');
+  const model = modelInfo(state.lastModel) ? state.lastModel : (state.models[0]?.id || (state.image.ready ? IMAGE_MODEL : 'saias-flash'));
   return { id: newId(), data: { model, reasoning: 'default', context_tokens: 0, messages: [] }, saved: false };
 }
 
@@ -149,6 +162,7 @@ async function openConversation(id) {
     if (!modelInfo(data.model) && state.models.length) data.model = state.models[0].id;
     state.current = { id, data, saved: true };
     state.attachments = [];
+    state.imageMode = false;
     renderAll();
     scrollToBottom(true);
   } catch (e) {
@@ -160,6 +174,7 @@ function newConversation() {
   if (state.busy) return;
   state.current = blankConversation();
   state.attachments = [];
+  state.imageMode = false;
   renderAll();
   $('input').focus();
 }
@@ -307,14 +322,14 @@ function renderReasoningMenu(menu) {
 
 function renderToolsMenu(menu) {
   menu.innerHTML = '';
-  menu.append(el('div', 'menu-label', 'Web tools the model may use'));
+  menu.append(el('div', 'menu-label', 'Tools the model may use'));
   if (!state.tools.length) {
     menu.append(el('div', 'menu-label', 'No tools available. Restart SAIAS to load them.'));
     return;
   }
   for (const t of state.tools) {
     const name = t.definition.function.name;
-    const on = state.settings.tools.includes(name);
+    const on = toolEnabled(name);
     const item = el('button', 'menu-item' + (on ? ' on' : ''));
     item.type = 'button';
     item.innerHTML = `<span class="check">${icons[name === 'web_fetch' ? 'page' : name === 'web_search' ? 'search' : 'globe']}</span>
@@ -322,9 +337,12 @@ function renderToolsMenu(menu) {
     item.querySelector('.title').textContent = toolLabel(name);
     item.querySelector('.sub').textContent = TOOL_HINTS[name] || (t.definition.function.description || '').split('.')[0];
     item.addEventListener('click', async () => {
-      const tools = new Set(state.settings.tools);
-      if (tools.has(name)) tools.delete(name); else tools.add(name);
-      state.settings.tools = [...tools];
+      if (name === IMAGE_TOOL) state.settings.image_tool = !on;
+      else {
+        const tools = new Set(state.settings.tools);
+        if (tools.has(name)) tools.delete(name); else tools.add(name);
+        state.settings.tools = [...tools];
+      }
       renderToolsMenu(menu);
       renderTopbar();
       await saveSettings();
@@ -342,19 +360,27 @@ async function saveSettings() {
 }
 
 function enabledTools() {
-  return state.tools.filter(t => state.settings.tools.includes(t.definition.function.name));
+  return state.tools.filter(t => toolEnabled(t.definition.function.name));
+}
+
+function toolEnabled(name) {
+  return name === IMAGE_TOOL ? state.settings.image_tool !== false : state.settings.tools.includes(name);
 }
 
 function renderTopbar() {
   const data = state.current.data;
   const model = modelInfo(data.model);
+  $('model-picker').hidden = imageOnly();
+  $('tools-picker').hidden = imageOnly();
+  $('reasoning-picker').hidden = imageOnly();
+  $('gauge').hidden = imageOnly();
   $('model-name').textContent = data.model;
   const def = model?.saias?.reasoning?.default;
   $('reasoning-name').textContent = data.reasoning === 'default'
     ? `Reasoning: ${LEVEL_LABELS[def] || 'default'}` : `Reasoning: ${LEVEL_LABELS[data.reasoning] || data.reasoning}`;
   $('reasoning-button').classList.toggle('on', data.reasoning !== 'default' && data.reasoning !== 'none');
   const count = enabledTools().length;
-  $('tools-name').textContent = count ? `Web tools · ${count}` : 'Web tools off';
+  $('tools-name').textContent = count ? `Tools · ${count}` : 'Tools off';
   $('tools-button').classList.toggle('on', count > 0);
   renderGauge();
 }
@@ -430,7 +456,7 @@ function renderThread() {
 function emptyState() {
   const wrap = el('div', 'empty');
   const h = el('h1');
-  h.textContent = 'What can I help with?';
+  h.textContent = imageOnly() ? 'What would you like to create?' : 'What can I help with?';
   const p = el('p');
   const model = modelInfo(state.current.data.model);
   p.textContent = `${state.current.data.model}${model?.saias?.model ? ` · ${model.saias.model}` : ''} · private, on this PC`;
@@ -449,7 +475,8 @@ function emptyState() {
     });
     grid.append(b);
   }
-  wrap.append(h, p, grid);
+  wrap.append(h, p);
+  if (!imageOnly()) wrap.append(grid);
   return wrap;
 }
 
@@ -543,14 +570,18 @@ function fillAssistant(turn, m, last) {
   }
   for (const round of m.tool_rounds || []) {
     if (round.text) turn.append(el('div', 'md', md.render(round.text)));
-    for (const call of round.calls || []) turn.append(toolCard(call));
+    for (const call of round.calls || []) {
+      turn.append(toolCard(call));
+      if (call.image_id) renderGeneratedImage(turn, call.image_id);
+    }
   }
+  if (m.image_id) renderGeneratedImage(turn, m.image_id);
   const text = live ? (m._pending || '') : (m.content || '');
   if (text) {
     const body = el('div', 'md' + (live ? ' cursor' : ''), md.render(text));
     turn.append(body);
   } else if (live && (m._waiting || (!m.reasoning && !(m.tool_rounds || []).length))) {
-    const wait = m._loading ? 'Loading the model…' : m._waiting ? 'Reading the results…' : 'Thinking…';
+    const wait = m._generating ? 'Generating an image…' : m._loading ? 'Loading the model…' : m._waiting ? 'Reading the results…' : 'Thinking…';
     turn.append(el('div', 'md', `<p class="pulse" style="color:var(--text-3)">${wait}</p>`));
   }
   if (m._error) {
@@ -569,6 +600,23 @@ function fillAssistant(turn, m, last) {
     }
     turn.append(actions);
   }
+}
+
+function renderGeneratedImage(turn, id) {
+  if (!/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/.test(id)) return;
+  const url = `${API}/images/${encodeURIComponent(state.current.id)}/${id}.png`;
+  const figure = el('figure', 'generated-image');
+  const img = el('img');
+  img.src = url;
+  img.alt = 'Image generated by saias-image';
+  img.width = img.height = 512;
+  img.loading = 'lazy';
+  const download = el('a');
+  download.href = url;
+  download.download = `saias-image-${id}.png`;
+  download.textContent = 'Download PNG';
+  figure.append(img, download);
+  turn.append(figure);
 }
 
 function fullText(m) {
@@ -740,6 +788,11 @@ async function runTool(call, signal) {
     return { result: 'The tool arguments were not valid JSON. Call the tool again with a JSON object.', failed: true };
   }
   try {
+    if (call.name === IMAGE_TOOL) {
+      if (!state.image.ready || !toolEnabled(IMAGE_TOOL)) return { result: 'The image tool is unavailable.', failed: true };
+      const { id } = await requestImage(params.prompt, signal);
+      return { result: 'An image was generated and displayed in the chat.', failed: false, imageId: id };
+    }
     const res = await fetch('/tools', {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ tool: call.name, params }), signal,
     });
@@ -755,12 +808,20 @@ async function runTool(call, signal) {
   }
 }
 
-async function respond() {
+function requestImage(prompt, signal) {
+  return api(`${API}/images`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json', 'X-SAIAS': '1' },
+    body: JSON.stringify({ prompt, conversation: state.current.id }), signal,
+  });
+}
+
+async function respond(imagePrompt = '') {
   const conversation = state.current;
   const data = conversation.data;
   const model = modelInfo(data.model);
-  const reply = { role: 'assistant', model: data.model, content: '', reasoning: '', tool_rounds: [] };
-  reply._loading = model && model.status?.value !== 'loaded';
+  const reply = { role: 'assistant', model: imagePrompt ? IMAGE_MODEL : data.model, content: '', reasoning: '', tool_rounds: [] };
+  reply._generating = Boolean(imagePrompt);
+  reply._loading = !imagePrompt && model && model.status?.value !== 'loaded';
   data.messages.push(reply);
   state.notice = null;
   const busy = {
@@ -772,12 +833,20 @@ async function respond() {
   renderThread();
   renderGauge();
   scrollToBottom(true);
-  setStatus(reply._loading ? `Loading ${data.model}…` : '');
+  setStatus(imagePrompt ? 'Generating an image…' : reply._loading ? `Loading ${data.model}…` : '');
 
   const tools = enabledTools();
   let speed = 0;
+  let generated = false;
   try {
-    for (let step = 0; ; step++) {
+    if (imagePrompt) {
+      const out = await requestImage(imagePrompt, busy.controller.signal);
+      reply.image_id = out.id;
+      reply.content = 'Image generated.';
+      generated = true;
+      setStatus('');
+    }
+    for (let step = 0; !imagePrompt; step++) {
       const body = buildRequest(data, reply, step < MAX_TOOL_ROUNDS ? tools : []);
       const round = await streamRound(body, busy.controller.signal, reply, busy);
       setStatus('');
@@ -802,13 +871,16 @@ async function respond() {
         entry.calls.push(call);
         refreshLive();
         setStatus(`Running ${toolLabel(call.name)}…`);
-        const out = await runTool(call, busy.controller.signal);
+        const out = generated && call.name === IMAGE_TOOL ? { result: 'An image was already generated.', failed: true }
+          : await runTool(call, busy.controller.signal);
         call.result = out.result;
         call.failed = out.failed;
+        if (out.imageId) { call.image_id = out.imageId; generated = true; }
         call._running = false;
         busy.chars += out.result.length;
         refreshLive();
       }
+      if (generated) { reply.content = 'Image generated.'; setStatus(''); break; }
       reply._waiting = true;
       setStatus('Reading the results…');
       refreshLive();
@@ -830,7 +902,6 @@ async function respond() {
     reply.stats = { tokens: busy.tokens, speed };
     state.speed = { value: speed, id: conversation.id };
   }
-  state.busy = null;
   const empty = !reply.content && !reply.tool_rounds.length;
   if (empty) {
     data.messages.splice(data.messages.indexOf(reply), 1);
@@ -839,7 +910,9 @@ async function respond() {
       state.notice.textContent = reply._error;
     }
   }
-  if (model) model.status = { value: 'loaded' };
+  if (generated) await loadModels().catch(() => {});
+  else if (model && !imagePrompt) model.status = { value: 'loaded' };
+  state.busy = null;
   if (state.current === conversation) {
     renderThread();
     renderTopbar();
@@ -854,22 +927,29 @@ async function send() {
   const input = $('input');
   const text = input.value.trim();
   if (!text && !state.attachments.length) return;
+  const imageRequest = state.imageMode || imageOnly();
+  if (imageRequest && (!text || state.attachments.length || text.length > 2000)) {
+    setStatus('Enter a prompt of 1–2,000 characters and remove any attachments.', true);
+    return;
+  }
   const data = state.current.data;
   const model = modelInfo(data.model);
-  if (!model) { setStatus('This model is not installed. Choose another one.', true); return; }
+  if (!imageRequest && !model) { setStatus('This model is not installed. Choose another one.', true); return; }
   if (state.attachments.some(a => a.image_url) && !model.saias?.vision) {
     setStatus(`${data.model} cannot see images. Remove them or choose a model with image support.`, true);
     return;
   }
   data.messages.push({
     role: 'user', content: text,
+    ...(imageRequest ? { image_request: true } : {}),
     ...(state.attachments.length ? { attachments: state.attachments.map(a => (a.image_url ? { name: a.name, image_url: a.image_url } : { name: a.name, text: a.text })) } : {}),
   });
   input.value = '';
   state.attachments = [];
+  state.imageMode = false;
   autosize();
   renderAttachments();
-  await respond();
+  await respond(imageRequest ? text : '');
 }
 
 async function regenerate() {
@@ -879,17 +959,26 @@ async function regenerate() {
   if (lastUser < 0) return;
   messages.splice(lastUser + 1);
   state.notice = null;
-  await respond();
+  await respond(messages[lastUser].image_request ? messages[lastUser].content : '');
 }
 
 function updateSend() {
   const button = $('send');
   const busy = Boolean(state.busy);
+  const imageButton = $('image-button');
+  imageButton.hidden = !state.image.supported;
+  const activeImageMode = state.imageMode || imageOnly();
+  imageButton.disabled = busy || imageOnly();
+  imageButton.classList.toggle('on', activeImageMode);
+  imageButton.setAttribute('aria-pressed', String(activeImageMode));
+  $('input').placeholder = activeImageMode ? 'Describe the image to create' : 'Message SAIAS';
   button.classList.toggle('stop', busy);
   button.title = busy ? 'Stop' : 'Send (Enter)';
   button.setAttribute('aria-label', busy ? 'Stop' : 'Send');
   button.disabled = !busy && !$('input').value.trim() && !state.attachments.length;
 }
+
+function imageOnly() { return state.image.ready && !state.models.length; }
 
 // ---------------------------------------------------------------- attachments
 
@@ -980,6 +1069,15 @@ function autosize() {
 }
 
 function bind() {
+  $('image-button').addEventListener('click', () => {
+    if (!state.image.ready) {
+      setStatus('Install saias-image with "saias install-image", then reload Chat.', true);
+      return;
+    }
+    state.imageMode = !state.imageMode;
+    updateSend();
+    $('input').focus();
+  });
   const input = $('input');
   input.addEventListener('input', () => { autosize(); updateSend(); });
   input.addEventListener('keydown', e => {
