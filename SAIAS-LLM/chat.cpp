@@ -14,7 +14,7 @@
 #include <system_error>
 #include <utility>
 
-namespace sai::chat {
+namespace saias::chat {
 namespace {
 
 using picojson::array;
@@ -187,12 +187,12 @@ std::string encode_request(const Conversation& conversation, const Settings& set
     };
     const auto effort = conversation.reasoning;
     const auto& level = levels.at(static_cast<std::size_t>(effort));
-    if (model.id == L"sai-flash") {
+    if (model.id == L"saias-flash") {
         const bool thinking = effort == Reasoning::on;
         body.emplace("chat_template_kwargs", value(object{{"enable_thinking", value(thinking)}}));
         body.emplace("reasoning_format", value("deepseek"));
     } else if (effort != Reasoning::preset) {
-        if (model.id == L"sai-pro") {
+        if (model.id == L"saias-pro") {
             body.emplace("chat_template_kwargs", value(object{{"reasoning_effort", value(level.inkling_value)}}));
         } else if (effort == Reasoning::off) {
             body.emplace("chat_template_kwargs", value(object{{"enable_thinking", value(false)}}));
@@ -244,10 +244,13 @@ Conversation decode_conversation(const std::filesystem::path& path) {
     result.id = path.stem().wstring();
     const auto data = read_json(path, archive_limit);
     auto id = wide(string(field(data, "model")));
-    if (id == L"sai-big") {
-        id = L"sai-smart";
-    } else if (id == L"sai-max") {
-        id = L"sai-pro";
+    if (id.starts_with(L"sai-")) {
+        id = L"saias-" + id.substr(4); // Conversations saved before the SAIAS rename.
+    }
+    if (id == L"saias-big") {
+        id = L"saias-smart";
+    } else if (id == L"saias-max") {
+        id = L"saias-pro";
     }
     const auto model = std::find_if(models.begin(), models.end(), [&](const Model& item) { return item.id == id; });
     if (model != models.end()) {
@@ -415,7 +418,7 @@ bool Transfer::wait(BOOL queued, DWORD expected, HANDLE stop) {
 
 std::wstring error_message(DWORD error, unsigned short port) {
     if (error == ERROR_WINHTTP_CANNOT_CONNECT) {
-        return L"The SAI backend stopped responding on port " + std::to_wstring(port) + L".";
+        return L"The SAIAS backend stopped responding on port " + std::to_wstring(port) + L".";
     }
     if (error == ERROR_WINHTTP_TIMEOUT) {
         return L"The local model server timed out.";
@@ -450,16 +453,16 @@ Backend backend_for(const Model& model) {
         for (; folder.is_absolute() && folder.has_relative_path(); folder = folder.parent_path()) {
             std::error_code error;
             if (std::filesystem::is_regular_file(folder / L"Launch-Inkling.cmd", error)
-                && std::filesystem::is_regular_file(folder / L"Sai-models.ini", error)) {
+                && std::filesystem::is_regular_file(folder / L"Saias-models.ini", error)) {
                 project = std::move(folder);
                 break;
             }
         }
     }
-    if (model.id == L"sai-pro") {
+    if (model.id == L"saias-pro") {
         return {std::move(project), model.port, L" pro"};
     }
-    if (model.id == L"sai-smart") {
+    if (model.id == L"saias-smart") {
         return {std::move(project), model.port, L" smart"};
     }
     return {std::move(project), model.port, {}};
@@ -469,7 +472,7 @@ using ProcessHandle = std::unique_ptr<void, decltype(&CloseHandle)>;
 
 std::wstring launch_backend(const Backend& backend, ProcessHandle& process) {
     if (backend.project.empty()) {
-        return L"Could not find Launch-Inkling.cmd. Open SAI-LLM.exe from the SAI project or its build folder.";
+        return L"Could not find Launch-Inkling.cmd. Open SAIAS-LLM.exe from the SAIAS project or its build folder.";
     }
     std::array<wchar_t, MAX_PATH> system{};
     const auto length = GetSystemDirectoryW(system.data(), static_cast<UINT>(system.size()));
@@ -484,7 +487,7 @@ std::wstring launch_backend(const Backend& backend, ProcessHandle& process) {
     PROCESS_INFORMATION information{};
     if (!CreateProcessW(executable.c_str(), command.data(), nullptr, nullptr, FALSE, CREATE_NO_WINDOW,
             nullptr, backend.project.c_str(), &startup, &information)) {
-        return L"Could not start the SAI backend (Windows error " + std::to_wstring(GetLastError()) + L").";
+        return L"Could not start the SAIAS backend (Windows error " + std::to_wstring(GetLastError()) + L").";
     }
     CloseHandle(information.hThread);
     process.reset(information.hProcess);
@@ -564,27 +567,27 @@ std::wstring wait_for_backend(HINTERNET connection, const Backend& backend, cons
             return error_message(probe.error, backend.port);
         } else if (probe.status == 200) {
             alias = string(field(probe.properties, "model_alias"));
-            if (alias == utf8(model.id) || (model.id == L"sai-smart" && alias == "bonsai-2-27b")) {
+            if (alias == utf8(model.id) || (model.id == L"saias-smart" && alias == "bonsai-2-27b")) {
                 return {};
             }
             return L"The server on port " + std::to_wstring(backend.port) + L" is not serving " + std::wstring(model.id) + L".";
         } else {
             const auto message = server_message(probe.properties);
             if (probe.status != 503 || message != L"Loading model") {
-                return L"SAI backend error " + std::to_wstring(probe.status)
+                return L"SAIAS backend error " + std::to_wstring(probe.status)
                     + (message.empty() ? L"." : L". " + message);
             }
         }
         if (process && WaitForSingleObject(process.get(), 0) == WAIT_OBJECT_0) {
             DWORD code = 0;
             GetExitCodeProcess(process.get(), &code);
-            return L"The SAI backend exited during startup (code " + std::to_wstring(code)
+            return L"The SAIAS backend exited during startup (code " + std::to_wstring(code)
                 + L"). Run Launch-Inkling.cmd" + std::wstring(backend.launch_arguments)
-                + L" from the SAI project folder to see the startup error.";
+                + L" from the SAIAS project folder to see the startup error.";
         }
         WaitForSingleObject(stop, 500);
     }
-    return L"The SAI backend took too long to start.";
+    return L"The SAIAS backend took too long to start.";
 }
 
 template <typename Publish>
@@ -709,7 +712,7 @@ std::wstring run_request(const Conversation& conversation, const Settings& setti
     const auto& model = models.at(conversation.model);
     const auto backend = backend_for(model);
     // Both the readiness checks and the chat request use the same fixed loopback endpoint.
-    InternetHandle session(WinHttpOpen(L"SAI-LLM/1.0", WINHTTP_ACCESS_TYPE_NO_PROXY,
+    InternetHandle session(WinHttpOpen(L"SAIAS-LLM/1.0", WINHTTP_ACCESS_TYPE_NO_PROXY,
         WINHTTP_NO_PROXY_NAME, WINHTTP_NO_PROXY_BYPASS, WINHTTP_FLAG_ASYNC));
     if (!session.handle) {
         return error_message(GetLastError(), backend.port);
@@ -742,17 +745,17 @@ bool supports_reasoning(const Model& model, Reasoning effort) {
     if (effort == Reasoning::preset || effort == Reasoning::off) {
         return true;
     }
-    if (model.id == L"sai-flash") {
+    if (model.id == L"saias-flash") {
         return effort == Reasoning::on;
     }
-    if (model.id == L"sai-smart") {
+    if (model.id == L"saias-smart") {
         return effort == Reasoning::medium || effort == Reasoning::extra_high;
     }
     return effort != Reasoning::on;
 }
 
 bool supports_images(const Model& model) {
-    return model.id == L"sai-smart" || model.id == L"sai-pro";
+    return model.id == L"saias-smart" || model.id == L"saias-pro";
 }
 
 std::wstring Conversation::title() const {
@@ -778,7 +781,7 @@ Archive::Archive() {
         const DWORD length = GetEnvironmentVariableW(L"LOCALAPPDATA", local.data(), size);
         if (length && length < size) {
             local.resize(length);
-            directory_ = std::filesystem::path(local) / L"SAI-LLM" / L"Conversations";
+            directory_ = std::filesystem::path(local) / L"SAIAS-LLM" / L"Conversations";
         }
     }
 }
@@ -902,4 +905,4 @@ Update Request::take() {
     return std::exchange(state_->update, {});
 }
 
-} // namespace sai::chat
+} // namespace saias::chat

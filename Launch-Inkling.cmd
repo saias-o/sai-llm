@@ -3,7 +3,7 @@ setlocal
 
 if /i "%~1"=="pro" goto :quantized_pro
 if /i "%~1"=="max" (
-    echo sai-max is reserved for Qwen 4 27B Q4. Run Launch-Inkling.cmd pro for Inkling 2 Mini.
+    echo saias-max is reserved for Qwen 4 27B Q4. Run Launch-Inkling.cmd pro for Inkling 2 Mini.
     exit /b 1
 )
 if /i "%~1"=="smart" goto :bonsai_smart
@@ -14,14 +14,14 @@ set "INKLING_SIZE=7764291776"
 set "INKLING_SERVER=%INKLING_HOME%\unsloth-cpu\llama-server.exe"
 set "INKLING_ROUTER_SERVER=%INKLING_HOME%\unsloth-vulkan\llama-server.exe"
 set "INKLING_TEMPLATE=%INKLING_HOME%\Inkling-2-Mini-direct.jinja"
-set "INKLING_PRESETS=%~dp0Sai-models.ini"
+set "INKLING_PRESETS=%~dp0Saias-models.ini"
 set "INKLING_CONTEXT=10240"
 set "INKLING_PORT=8080"
 set "INKLING_PROFILE=Unsloth CPU, 5 experts"
 set "INKLING_EXPERTS=--override-kv inkling2.expert_used_count=int:5"
 set "INKLING_UBATCH=128"
 if /i "%~1"=="router-local" (
-    set "INKLING_PRESETS=%~dp0Sai-models.local.ini"
+    set "INKLING_PRESETS=%~dp0Saias-models.local.ini"
     set "INKLING_PORT=8082"
     goto :profiles
 )
@@ -35,7 +35,7 @@ if /i "%~3"=="quality" (
 
 if "%~1"=="" if "%~2"=="" if "%~3"=="" (
     set "INKLING_PORT=8082"
-    if exist "%~dp0Sai-models.local.ini" set "INKLING_PRESETS=%~dp0Sai-models.local.ini"
+    if exist "%~dp0Saias-models.local.ini" set "INKLING_PRESETS=%~dp0Saias-models.local.ini"
     goto :profiles
 )
 
@@ -79,14 +79,14 @@ if not exist "%INKLING_PRESETS%" (
     exit /b 1
 )
 rem Web tools for Llama Chat (MCP server run with Node.js). JSON needs forward slashes.
-set "SAI_WEB_MCP=%~dp0mcp\sai-web.js"
-set "SAI_WEB_MCP=%SAI_WEB_MCP:\=/%"
+set "SAIAS_WEB_MCP=%~dp0mcp\saias-web.js"
+set "SAIAS_WEB_MCP=%SAIAS_WEB_MCP:\=/%"
 pushd "%INKLING_HOME%" || exit /b 1
-echo sai-flash - http://127.0.0.1:%INKLING_PORT%
+echo saias-flash - http://127.0.0.1:%INKLING_PORT%
 echo Select a model in Hermes. Press Ctrl+C to stop the server.
 "%INKLING_ROUTER_SERVER%" --host 127.0.0.1 --port "%INKLING_PORT%" --cors-origins localhost ^
     --models-preset "%INKLING_PRESETS%" --models-max 1 ^
-    --mcp-servers-json "{\"mcpServers\":{\"web\":{\"command\":\"node\",\"args\":[\"%SAI_WEB_MCP%\"],\"timeout_ms\":120000}}}"
+    --mcp-servers-json "{\"mcpServers\":{\"web\":{\"command\":\"node\",\"args\":[\"%SAIAS_WEB_MCP%\"],\"timeout_ms\":120000}}}"
 set "INKLING_EXIT=%errorlevel%"
 popd
 exit /b %INKLING_EXIT%
@@ -103,13 +103,13 @@ set "INKLING_PROJECTOR=%INKLING_HOME%\models\mmproj-F16.gguf"
 set "INKLING_TEMPLATE=%~dp0templates\Inkling-2-Mini-reasoning.jinja"
 
 for %%F in ("%INKLING_SERVER%" "%INKLING_MODEL%" "%INKLING_PROJECTOR%" "%INKLING_TEMPLATE%") do if not exist "%%~F" (
-    echo sai-pro asset missing: "%%~F"
+    echo saias-pro asset missing: "%%~F"
     exit /b 1
 )
 
-echo sai-pro - Inkling 2 Mini UD-Q4_K_XL - http://127.0.0.1:8081/v1
-echo Keep this window open while using sai-pro. Press Ctrl+C to stop the server.
-"%INKLING_SERVER%" --model "%INKLING_MODEL%" --mmproj "%INKLING_PROJECTOR%" --alias sai-pro ^
+echo saias-pro - Inkling 2 Mini UD-Q4_K_XL - http://127.0.0.1:8081/v1
+echo Keep this window open while using saias-pro. Press Ctrl+C to stop the server.
+"%INKLING_SERVER%" --model "%INKLING_MODEL%" --mmproj "%INKLING_PROJECTOR%" --alias saias-pro ^
     --host 127.0.0.1 --port 8081 --cors-origins localhost ^
     --ctx-size 500000 --parallel 1 --fit on --fit-target 2048 ^
     --batch-size 512 --ubatch-size 128 --flash-attn on --cache-type-k q8_0 --cache-type-v q8_0 ^

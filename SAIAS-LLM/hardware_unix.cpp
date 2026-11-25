@@ -16,7 +16,7 @@
 #include <sys/sysctl.h>
 #endif
 
-namespace sai {
+namespace saias {
 namespace {
 
 constexpr double bytes_per_gib = 1024.0 * 1024.0 * 1024.0;
@@ -215,4 +215,4 @@ Hardware scan_hardware() {
 #endif
 }
 
-} // namespace sai
+} // namespace saias

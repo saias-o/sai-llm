@@ -1,15 +1,15 @@
 <#
 .SYNOPSIS
-  Installs and configures SAI-LLM: llama.cpp runtimes, models, web search, Hermes.
+  Installs and configures SAIAS-LLM: llama.cpp runtimes, models, web search, Hermes.
 
 .DESCRIPTION
   Safe to run again: complete files are kept and an interrupted download resumes
   where it stopped.
 
 .EXAMPLE
-  .\Install-SAI.cmd                         # interactive, recommended profiles by default
-  .\Install-SAI.cmd -Profiles flash,smart -Yes
-  .\Install-SAI.cmd -Check                  # report the state without installing anything
+  .\Install-SAIAS.cmd                         # interactive, recommended profiles by default
+  .\Install-SAIAS.cmd -Profiles flash,smart -Yes
+  .\Install-SAIAS.cmd -Check                  # report the state without installing anything
 #>
 [CmdletBinding()]
 param(
@@ -26,7 +26,7 @@ $ProgressPreference = 'SilentlyContinue'
 
 $Root = Split-Path $PSScriptRoot -Parent
 $InklingHome = Join-Path $env:LOCALAPPDATA 'Inkling2Mini'
-$AppData = Join-Path $env:LOCALAPPDATA 'SAI-LLM'
+$AppData = Join-Path $env:LOCALAPPDATA 'SAIAS-LLM'
 $Downloads = Join-Path $AppData 'Downloads'
 
 function Write-Step($text) { Write-Host ''; Write-Host "== $text" -ForegroundColor Cyan }
@@ -52,7 +52,7 @@ function Update-SessionPath {
 # ---------------------------------------------------------------- hardware
 
 Write-Step 'Hardware'
-if (-not [Environment]::Is64BitOperatingSystem) { throw 'SAI-LLM requires 64-bit Windows.' }
+if (-not [Environment]::Is64BitOperatingSystem) { throw 'SAIAS-LLM requires 64-bit Windows.' }
 $ramGB = [math]::Round((Get-CimInstance Win32_ComputerSystem).TotalPhysicalMemory / 1GB)
 $nvidia = $null
 $smi = Get-Command nvidia-smi -ErrorAction SilentlyContinue
@@ -72,7 +72,7 @@ Write-Host "  Free space on $($drive.Name):: $(Format-Size $drive.Free)"
 
 # ---------------------------------------------------------------- Bonsai home (same rules as bonsai\Start-Bonsai.cmd)
 
-$BonsaiHome = $env:SAI_BONSAI_HOME
+$BonsaiHome = $env:SAIAS_BONSAI_HOME
 if (-not $BonsaiHome) {
     $BonsaiHome = Join-Path $env:LOCALAPPDATA 'Bonsai2'
     if (-not (Test-Path (Join-Path $BonsaiHome 'bin\llama-server.exe')) -and (Test-Path 'D:\LLM\bonsai2\bin\llama-server.exe')) {
@@ -96,21 +96,21 @@ $hfBonsai = 'https://huggingface.co/prism-ml/Ternary-Bonsai-2-27B-gguf/resolve/m
 
 $Catalog = [ordered]@{
     flash = @{
-        Title = 'sai-flash'; Desc = 'LFM3 1.7B, fast, any hardware (+ Llama Chat UI)'
+        Title = 'saias-flash'; Desc = 'LFM3 1.7B, fast, any hardware (+ Llama Chat UI)'
         Files = @(
             @{ Name = 'Unsloth Vulkan runtime (router + Llama Chat)'; Url = 'https://github.com/unslothai/llama.cpp/releases/download/b12588-mix-c0c3de8/app-b12588-mix-c0c3de8-windows-x64-vulkan.zip'; Size = 28561269; Zip = Join-Path $InklingHome 'unsloth-vulkan'; Marker = 'llama-server.exe' },
             @{ Name = 'LFM3-1.7B Q4_K_M model'; Url = 'https://huggingface.co/LiquidAI/LFM3-1.7B-GGUF/resolve/cd0c74c575b5c416f3011b5b4c298077f26ca8c2/LFM3-1.7B-Q4_K_M.gguf'; Size = 1099627808; Path = Join-Path $InklingHome 'models\LFM3-1.7B-Q4_K_M.gguf' }
         )
     }
     smart = @{
-        Title = 'sai-smart'; Desc = 'Bonsai 2 27B ternary, images, 200k context'
+        Title = 'saias-smart'; Desc = 'Bonsai 2 27B ternary, images, 200k context'
         Files = $bonsaiRuntime + @(
             @{ Name = 'Bonsai 2 27B PTQ1_0 model'; Url = "$hfBonsai/Ternary-Bonsai-2-27B-PTQ1_0.gguf"; Size = 5946648928; Path = Join-Path $BonsaiHome 'models\Ternary-Bonsai-2-27B-PTQ1_0.gguf' },
             @{ Name = 'Bonsai image projector'; Url = "$hfBonsai/Ternary-Bonsai-2-27B-mmproj-Q8_0.gguf"; Size = 629246976; Path = Join-Path $BonsaiHome 'models\Ternary-Bonsai-2-27B-mmproj-Q8_0.gguf' }
         )
     }
     pro = @{
-        Title = 'sai-pro'; Desc = 'Inkling 2 Mini Q4_K_XL, most capable, 500k context (NVIDIA)'
+        Title = 'saias-pro'; Desc = 'Inkling 2 Mini Q4_K_XL, most capable, 500k context (NVIDIA)'
         Files = @(
             @{ Name = 'Unsloth CUDA runtime (Inkling)'; Url = 'https://github.com/unslothai/llama.cpp/releases/download/b12631-mix-acc0843/app-b12631-mix-acc0843-windows-x64-cuda12-portable.zip'; Size = 471886549; Zip = Join-Path $InklingHome 'unsloth-cuda'; Marker = 'llama-server.exe' },
             @{ Name = 'Inkling 2 Mini UD-Q4_K_XL model'; Url = "$hfInkling/Inkling-2-Mini-UD-Q4_K_XL.gguf"; Size = 17629759456; Path = Join-Path $InklingHome 'models\Inkling-2-Mini-UD-Q4_K_XL.gguf' },
@@ -158,8 +158,8 @@ if (-not $Profiles) {
     }
 }
 $Profiles = @($Profiles | ForEach-Object { $_ -split '[,; ]+' } | ForEach-Object { $_.Trim().ToLower() } | Where-Object { $Catalog.Contains($_) } | Select-Object -Unique)
-if ($Profiles -notcontains 'flash') { $Profiles = @('flash') + $Profiles } # the sai-flash router serves Llama Chat
-if ($Profiles -contains 'pro' -and -not $nvidia) { Write-Bad 'Skipping sai-pro: no NVIDIA GPU.'; $Profiles = @($Profiles | Where-Object { $_ -ne 'pro' }) }
+if ($Profiles -notcontains 'flash') { $Profiles = @('flash') + $Profiles } # the saias-flash router serves Llama Chat
+if ($Profiles -contains 'pro' -and -not $nvidia) { Write-Bad 'Skipping saias-pro: no NVIDIA GPU.'; $Profiles = @($Profiles | Where-Object { $_ -ne 'pro' }) }
 Write-Host "  Selected: $($Profiles -join ', ')"
 
 $need = 0
@@ -171,7 +171,7 @@ if ($need -gt 0) {
 
 # ---------------------------------------------------------------- Node.js
 
-Write-Step 'Node.js (SAI hub and web search)'
+Write-Step 'Node.js (SAIAS hub and web search)'
 function Get-NodeMajor {
     $node = Get-Command node -ErrorAction SilentlyContinue
     if (-not $node) { return 0 }
@@ -253,33 +253,33 @@ if (-not $Check) {
     Write-Ok "Inkling chat templates copied to $InklingHome"
 }
 
-# sai-flash preset for this PC's GPU
-$localIni = Join-Path $Root 'Sai-models.local.ini'
+# saias-flash preset for this PC's GPU
+$localIni = Join-Path $Root 'Saias-models.local.ini'
 if (Test-Path $localIni) {
-    Write-Ok 'Kept the existing Sai-models.local.ini'
+    Write-Ok 'Kept the existing Saias-models.local.ini'
 } elseif (-not $Check) {
     $router = Join-Path $InklingHome 'unsloth-vulkan\llama-server.exe'
     # "  Vulkan0: NVIDIA GeForce RTX 4070 (12010 MiB, 11242 MiB free)" -> pick the device with the most memory
     $devices = @(& $router --list-devices 2>&1 | ForEach-Object { "$_" } | Where-Object { $_ -match '^\s+(Vulkan\d+):.*\((\d+) MiB' } | ForEach-Object {
             [pscustomobject]@{ Id = $Matches[1]; MiB = [int]$Matches[2] }
         } | Sort-Object MiB -Descending)
-    $ini = Get-Content (Join-Path $Root 'Sai-models.local.ini.example') -Raw
+    $ini = Get-Content (Join-Path $Root 'Saias-models.local.ini.example') -Raw
     if ($devices.Count -eq 0) {
         $ini = $ini -replace '(?m)^device = Vulkan0', 'device = none' -replace '(?m)^n-gpu-layers = 99', 'n-gpu-layers = 0'
-        Write-Ok 'sai-flash set to CPU (no Vulkan GPU found)'
+        Write-Ok 'saias-flash set to CPU (no Vulkan GPU found)'
     } else {
         $ini = $ini -replace '(?m)^device = Vulkan0', "device = $($devices[0].Id)"
-        Write-Ok "sai-flash set to $($devices[0].Id) ($($devices[0].MiB) MiB)"
+        Write-Ok "saias-flash set to $($devices[0].Id) ($($devices[0].MiB) MiB)"
     }
     [IO.File]::WriteAllText($localIni, $ini, (New-Object Text.UTF8Encoding $false))
 }
-if ($BonsaiHome -ne (Join-Path $env:LOCALAPPDATA 'Bonsai2') -and -not $env:SAI_BONSAI_HOME) {
+if ($BonsaiHome -ne (Join-Path $env:LOCALAPPDATA 'Bonsai2') -and -not $env:SAIAS_BONSAI_HOME) {
     Write-Ok "Using the Bonsai installation in $BonsaiHome"
 }
 
 # ---------------------------------------------------------------- Hermes
 
-$defaultModel = if ($Profiles -contains 'smart') { 'sai-smart' } elseif ($Profiles -contains 'pro') { 'sai-pro' } else { 'sai-flash' }
+$defaultModel = if ($Profiles -contains 'smart') { 'saias-smart' } elseif ($Profiles -contains 'pro') { 'saias-pro' } else { 'saias-flash' }
 if (-not $NoHermes) {
     Write-Step 'Hermes'
     $hermes = Get-Command hermes -ErrorAction SilentlyContinue
@@ -295,13 +295,13 @@ if (-not $NoHermes) {
         $python = Join-Path (Split-Path (Split-Path $hermes.Source)) 'hermes-agent\venv\Scripts\python.exe'
         if (-not (Test-Path $python)) { $python = (Get-Command python -ErrorAction SilentlyContinue).Source }
         if ($Check) {
-            $hasSai = (Test-Path $configPath) -and (Select-String -Path $configPath -Pattern '^\s+sai:\s*$' -Quiet)
-            if ($hasSai) { Write-Ok "SAI provider present in $configPath" } else { Write-Todo "SAI provider to add to $configPath" }
+            $hasSaias = (Test-Path $configPath) -and (Select-String -Path $configPath -Pattern '^\s+saias:\s*$' -Quiet)
+            if ($hasSaias) { Write-Ok "SAIAS provider present in $configPath" } else { Write-Todo "SAIAS provider to add to $configPath" }
         } elseif (-not $configPath -or -not $python) {
             Write-Bad 'Hermes configuration not found; add the provider manually (see README).'
         } else {
             $setDefault = Read-YesNo "Make $defaultModel the default Hermes model?"
-            $mcp = (Join-Path $Root 'mcp\sai-web.js') -replace '\\', '/'
+            $mcp = (Join-Path $Root 'mcp\saias-web.js') -replace '\\', '/'
             $merge = Join-Path $AppData 'hermes-merge.py'
             New-Item -ItemType Directory -Force -Path $AppData | Out-Null
             @'
@@ -313,26 +313,26 @@ cfg = {}
 if os.path.exists(path):
     with open(path, encoding="utf-8") as f:
         cfg = yaml.safe_load(f) or {}
-    shutil.copy2(path, path + ".bak-sai-" + datetime.datetime.now().strftime("%Y%m%d-%H%M%S"))
+    shutil.copy2(path, path + ".bak-saias-" + datetime.datetime.now().strftime("%Y%m%d-%H%M%S"))
 providers = cfg.get("providers") or {}
-providers["sai"] = {
-    "name": "SAI (local)",
+providers["saias"] = {
+    "name": "SAIAS (local)",
     "api": "http://127.0.0.1:8090/v1",
     "transport": "chat_completions",
     "discover_models": False,
     "default_model": default_model,
     "models": {
-        "sai-flash": {"context_length": 262144},
-        "sai-smart": {"context_length": 200000, "supports_vision": True},
-        "sai-pro": {"context_length": 500000, "supports_vision": True},
+        "saias-flash": {"context_length": 262144},
+        "saias-smart": {"context_length": 200000, "supports_vision": True},
+        "saias-pro": {"context_length": 500000, "supports_vision": True},
     },
 }
 cfg["providers"] = providers
 servers = cfg.get("mcp_servers") or {}
-servers["sai-web"] = {"command": "node", "args": [mcp_script], "timeout": 120}
+servers["saias-web"] = {"command": "node", "args": [mcp_script], "timeout": 120}
 cfg["mcp_servers"] = servers
 if set_default:
-    cfg["model"] = {"provider": "custom:sai", "default": default_model}
+    cfg["model"] = {"provider": "custom:saias", "default": default_model}
 with open(path, "w", encoding="utf-8") as f:
     yaml.safe_dump(cfg, f, sort_keys=True, allow_unicode=True, default_flow_style=False)
 print("ok")
@@ -341,8 +341,8 @@ print("ok")
             $out = & $python $merge $configPath $mcp $defaultModel $flag 2>&1
             if ($LASTEXITCODE -ne 0) { Write-Bad "Hermes configuration failed: $out" }
             else {
-                Write-Ok "Added the SAI provider (http://127.0.0.1:8090/v1) and web search to $configPath (backup: .bak-sai-*)"
-                if ($setDefault) { Write-Ok "Default Hermes model: custom:sai / $defaultModel" }
+                Write-Ok "Added the SAIAS provider (http://127.0.0.1:8090/v1) and web search to $configPath (backup: .bak-saias-*)"
+                if ($setDefault) { Write-Ok "Default Hermes model: custom:saias / $defaultModel" }
             }
         }
     }
@@ -353,15 +353,15 @@ print("ok")
 if (-not $NoShortcut -and -not $Check) {
     Write-Step 'Shortcut'
     $desktop = [Environment]::GetFolderPath('Desktop')
-    $lnk = Join-Path $desktop 'SAI.lnk'
+    $lnk = Join-Path $desktop 'SAIAS.lnk'
     $shell = New-Object -ComObject WScript.Shell
     $s = $shell.CreateShortcut($lnk)
-    $s.TargetPath = Join-Path $Root 'Start-SAI.cmd'
+    $s.TargetPath = Join-Path $Root 'Start-SAIAS.cmd'
     $s.WorkingDirectory = $Root
-    $s.IconLocation = Join-Path $Root 'SAI-LLM\sai-llm.ico'
-    $s.Description = 'Start SAI-LLM (models, web search, Llama Chat)'
+    $s.IconLocation = Join-Path $Root 'SAIAS-LLM\saias-llm.ico'
+    $s.Description = 'Start SAIAS-LLM (models, web search, Llama Chat)'
     $s.Save()
-    Write-Ok "Created the SAI shortcut on the desktop"
+    Write-Ok "Created the SAIAS shortcut on the desktop"
 }
 
 # ---------------------------------------------------------------- summary
@@ -370,7 +370,7 @@ Write-Step 'Done'
 if ($Check) {
     Write-Host '  Check mode: nothing was installed.'
 } else {
-    Write-Host '  Start SAI: double-click Start-SAI.cmd (or the SAI desktop shortcut).'
-    Write-Host '  Llama Chat: http://127.0.0.1:8090/  (sai-flash, sai-smart, sai-pro + web search)'
-    Write-Host '  Hermes:     provider custom:sai, http://127.0.0.1:8090/v1 (for example /model custom:sai:sai-smart)'
+    Write-Host '  Start SAIAS: double-click Start-SAIAS.cmd (or the SAIAS desktop shortcut).'
+    Write-Host '  Llama Chat: http://127.0.0.1:8090/  (saias-flash, saias-smart, saias-pro + web search)'
+    Write-Host '  Hermes:     provider custom:saias, http://127.0.0.1:8090/v1 (for example /model custom:saias:saias-smart)'
 }

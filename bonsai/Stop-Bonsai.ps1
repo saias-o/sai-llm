@@ -2,7 +2,7 @@
 param([ValidateRange(0, 86400)][int]$DelaySeconds = 0)
 
 $ErrorActionPreference = 'Stop'
-$bonsaiRoot = $env:SAI_BONSAI_HOME
+$bonsaiRoot = $env:SAIAS_BONSAI_HOME
 if (-not $bonsaiRoot) {
     $bonsaiRoot = Join-Path $env:LOCALAPPDATA 'Bonsai2'
     if (-not (Test-Path -LiteralPath (Join-Path $bonsaiRoot 'bin\llama-server.exe')) -and

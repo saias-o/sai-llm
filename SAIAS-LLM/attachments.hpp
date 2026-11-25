@@ -4,7 +4,7 @@
 
 #include <stop_token>
 
-namespace sai::chat {
+namespace saias::chat {
 
 inline constexpr std::size_t draft_attachment_limit = 6;
 
@@ -15,4 +15,4 @@ struct AttachmentImport {
 
 AttachmentImport import_attachment(const std::filesystem::path& path, const Model& model, std::stop_token stop);
 
-} // namespace sai::chat
+} // namespace saias::chat

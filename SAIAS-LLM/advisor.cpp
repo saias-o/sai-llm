@@ -6,14 +6,14 @@
 #include <sstream>
 #include <utility>
 
-namespace sai {
+namespace saias {
 namespace {
 
 // Estimates include engine and context overhead plus host headroom.
 // Dedicated VRAM is considered per adapter, since most engines do not pool it.
-constexpr Profile pro_profile{L"sai-pro", L"500,000", 0, 10, 32};
-constexpr Profile smart_profile{L"sai-smart", L"200,000", 0, 12, 16};
-constexpr Profile flash_profile{L"sai-flash", L"262,144", 6, 4, 5};
+constexpr Profile pro_profile{L"saias-pro", L"500,000", 0, 10, 32};
+constexpr Profile smart_profile{L"saias-smart", L"200,000", 0, 12, 16};
+constexpr Profile flash_profile{L"saias-flash", L"262,144", 6, 4, 5};
 constexpr const Profile* profiles[]{&pro_profile, &smart_profile, &flash_profile};
 constexpr auto ignore_case = std::regex_constants::icase;
 
@@ -146,4 +146,4 @@ std::wstring gib(double amount) {
     return text.str();
 }
 
-} // namespace sai
+} // namespace saias

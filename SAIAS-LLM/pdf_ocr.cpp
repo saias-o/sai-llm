@@ -10,7 +10,7 @@
 
 #include <cstring>
 
-namespace sai::chat {
+namespace saias::chat {
 namespace {
 
 using Microsoft::WRL::ComPtr;
@@ -137,4 +137,4 @@ std::wstring recognize_pdf_page(const unsigned char* pixels, int width, int heig
     return recognized;
 }
 
-} // namespace sai::chat
+} // namespace saias::chat

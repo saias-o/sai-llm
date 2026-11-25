@@ -5,7 +5,7 @@
 #include <array>
 #include <utility>
 
-namespace sai {
+namespace saias {
 
 // NVML is optional. Only public, read-only inventory calls are used.
 template <typename SymbolAddress>
@@ -60,4 +60,4 @@ std::vector<Adapter> scan_nvml(SymbolAddress symbol) {
     return result;
 }
 
-} // namespace sai
+} // namespace saias

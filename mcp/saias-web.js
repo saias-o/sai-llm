@@ -1,4 +1,4 @@
-// SAI web tools: an MCP server (stdio, NDJSON JSON-RPC) that gives the SAI models web access.
+// SAIAS web tools: an MCP server (stdio, NDJSON JSON-RPC) that gives the SAIAS models web access.
 //
 // Tools (llama-server prefixes them with the server name "web"):
 //   search    keyless web search, DuckDuckGo + Bing merged by reciprocal rank fusion
@@ -6,7 +6,7 @@
 //   research  search, then read the best pages in one call
 //
 // Node.js 22, no dependencies. Started by llama-server through --mcp-servers-json (see Launch-Inkling.cmd).
-// Environment: SAI_BROWSER (path to a Chromium browser), SAI_WEB_ALLOW_PRIVATE=1 (allow local/LAN URLs).
+// Environment: SAIAS_BROWSER (path to a Chromium browser), SAIAS_WEB_ALLOW_PRIVATE=1 (allow local/LAN URLs).
 
 'use strict';
 
@@ -22,7 +22,7 @@ const { execFile } = require('node:child_process');
 const VERSION = '1.0.0';
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36';
 const MAX_DOWNLOAD = 15 * 1024 * 1024;
-const ALLOW_PRIVATE = process.env.SAI_WEB_ALLOW_PRIVATE === '1';
+const ALLOW_PRIVATE = process.env.SAIAS_WEB_ALLOW_PRIVATE === '1';
 
 const err = (...a) => process.stderr.write(a.join(' ') + '\n');
 
@@ -488,7 +488,7 @@ async function checkUrl(raw) {
     const host = url.hostname.replace(/^\[|\]$/g, '');
     const addrs = net.isIP(host) ? [host] : (await dns.lookup(host, { all: true }).catch(() => [])).map(a => a.address);
     if (host === 'localhost' || host.endsWith('.localhost') || addrs.some(isPrivateIp)) {
-      throw new Error('Local and private network addresses are blocked. Set SAI_WEB_ALLOW_PRIVATE=1 to allow them.');
+      throw new Error('Local and private network addresses are blocked. Set SAIAS_WEB_ALLOW_PRIVATE=1 to allow them.');
     }
   }
   return url;
@@ -526,7 +526,7 @@ function decodeText(buf, type) {
 
 function findBrowser() {
   const pf = [process.env.ProgramFiles, process.env['ProgramFiles(x86)'], process.env.LOCALAPPDATA].filter(Boolean);
-  const candidates = [process.env.SAI_BROWSER];
+  const candidates = [process.env.SAIAS_BROWSER];
   for (const base of pf) {
     candidates.push(
       path.join(base, 'Google', 'Chrome', 'Application', 'chrome.exe'),
@@ -541,8 +541,8 @@ function findBrowser() {
 const BROWSER = findBrowser();
 
 function renderWithBrowser(url) {
-  if (!BROWSER) return Promise.reject(new Error('No Chromium browser (Chrome, Edge, Brave) found for JavaScript rendering. Set SAI_BROWSER.'));
-  const profile = fs.mkdtempSync(path.join(os.tmpdir(), 'sai-web-'));
+  if (!BROWSER) return Promise.reject(new Error('No Chromium browser (Chrome, Edge, Brave) found for JavaScript rendering. Set SAIAS_BROWSER.'));
+  const profile = fs.mkdtempSync(path.join(os.tmpdir(), 'saias-web-'));
   const args = ['--headless=new', '--disable-gpu', '--no-first-run', '--no-default-browser-check', '--disable-extensions', '--mute-audio', '--hide-scrollbars',
     `--user-agent=${UA}`, '--lang=en-US', `--user-data-dir=${profile}`, '--virtual-time-budget=12000', '--dump-dom', url];
   return new Promise((resolve, reject) => {
@@ -817,7 +817,7 @@ async function onMessage(msg) {
       return reply(id, {
         protocolVersion: params.protocolVersion || '2024-11-05',
         capabilities: { tools: {} },
-        serverInfo: { name: 'sai-web', version: VERSION },
+        serverInfo: { name: 'saias-web', version: VERSION },
       });
     case 'ping':
       return reply(id, {});
@@ -838,7 +838,7 @@ async function onMessage(msg) {
   }
 }
 
-// CLI test mode: node sai-web.js search "query" | fetch URL | research "query"
+// CLI test mode: node saias-web.js search "query" | fetch URL | research "query"
 if (process.argv[2] && TOOLS.some(t => t.name === process.argv[2])) {
   const tool = TOOLS.find(t => t.name === process.argv[2]);
   const arg = process.argv.slice(3).join(' ');
@@ -853,5 +853,5 @@ if (process.argv[2] && TOOLS.some(t => t.name === process.argv[2])) {
     onMessage(msg).catch(e => msg.id != null && fail(msg.id, -32603, e.message));
   });
   rl.on('close', () => process.exit(0));
-  err(`sai-web ${VERSION} ready${BROWSER ? ` (browser: ${BROWSER})` : ' (no browser for JavaScript rendering)'}`);
+  err(`saias-web ${VERSION} ready${BROWSER ? ` (browser: ${BROWSER})` : ' (no browser for JavaScript rendering)'}`);
 }

@@ -5,7 +5,7 @@
 #include <string_view>
 #include <vector>
 
-namespace sai {
+namespace saias {
 
 enum class Vendor : unsigned { other = 0, amd = 0x1002, nvidia = 0x10de, intel = 0x8086, apple = 0x106b };
 enum class Platform { windows, linux_pc, mac };
@@ -53,4 +53,4 @@ Hardware scan_hardware();
 Advice recommend(const Hardware& hardware);
 std::wstring gib(double amount);
 
-} // namespace sai
+} // namespace saias

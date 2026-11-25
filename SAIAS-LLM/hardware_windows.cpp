@@ -11,7 +11,7 @@
 #include <stdexcept>
 #include <utility>
 
-namespace sai {
+namespace saias {
 namespace {
 
 constexpr double bytes_per_gib = 1024.0 * 1024.0 * 1024.0;
@@ -149,4 +149,4 @@ Hardware scan_hardware() {
     return hardware;
 }
 
-} // namespace sai
+} // namespace saias

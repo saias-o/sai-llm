@@ -1,16 +1,16 @@
-// SAI hub: one llama.cpp Llama Chat UI for the three SAI profiles.
+// SAIAS hub: one llama.cpp Llama Chat UI for the three SAIAS profiles.
 //
-// No single llama-server build can host every profile: sai-smart needs the
-// PrismML fork (ptq1_0 weights) and sai-pro needs the Unsloth build (inkling
-// architecture). The hub therefore fronts the sai-flash router on port 8082,
+// No single llama-server build can host every profile: saias-smart needs the
+// PrismML fork (ptq1_0 weights) and saias-pro needs the Unsloth build (inkling
+// architecture). The hub therefore fronts the saias-flash router on port 8082,
 // which serves Llama Chat, and speaks the llama-server router API for the two
 // other profiles so they appear in the same model selector:
-//   GET  /v1/models, /models   router list + sai-smart + sai-pro
+//   GET  /v1/models, /models   router list + saias-smart + saias-pro
 //   POST /models/load|unload   starts or stops Launch-Inkling.cmd smart|pro
-//   GET  /models/sse           router events + sai-smart/sai-pro status events
+//   GET  /models/sse           router events + saias-smart/saias-pro status events
 //   requests naming a model    routed to 8080 (smart), 8081 (pro) or the router
 //
-// Run: node hub\sai-hub.js [--open]   (Node.js 22, no dependencies)
+// Run: node hub\saias-hub.js [--open]   (Node.js 22, no dependencies)
 
 'use strict';
 
@@ -23,18 +23,18 @@ const { setTimeout: delay } = require('node:timers/promises');
 
 const ROOT = path.dirname(__dirname);
 const HOST = '127.0.0.1';
-const PORT = Number(process.env.SAI_HUB_PORT || 8090);
+const PORT = Number(process.env.SAIAS_HUB_PORT || 8090);
 const ROUTER_PORT = 8082;
-// One model in memory at a time, like the router's --models-max 1. Set SAI_HUB_EXCLUSIVE=0 to allow several.
-const EXCLUSIVE = process.env.SAI_HUB_EXCLUSIVE !== '0';
-const LOG_DIR = path.join(process.env.LOCALAPPDATA || path.join(os.homedir(), 'AppData', 'Local'), 'SAI-LLM', 'BackendLogs');
+// One model in memory at a time, like the router's --models-max 1. Set SAIAS_HUB_EXCLUSIVE=0 to allow several.
+const EXCLUSIVE = process.env.SAIAS_HUB_EXCLUSIVE !== '0';
+const LOG_DIR = path.join(process.env.LOCALAPPDATA || path.join(os.homedir(), 'AppData', 'Local'), 'SAIAS-LLM', 'BackendLogs');
 const STARTUP_TIMEOUT_MS = 15 * 60 * 1000;
 const CREATED = Math.floor(Date.now() / 1000);
 
 // Profiles served by their own llama-server, outside the router.
 const EXTERNAL = {
-  'sai-smart': { port: 8080, launchArgs: ['smart'], aliases: ['bonsai-2-27b'], ctx: 200000 },
-  'sai-pro': { port: 8081, launchArgs: ['pro'], aliases: [], ctx: 500000 },
+  'saias-smart': { port: 8080, launchArgs: ['smart'], aliases: ['bonsai-2-27b'], ctx: 200000 },
+  'saias-pro': { port: 8081, launchArgs: ['pro'], aliases: [], ctx: 500000 },
 };
 for (const m of Object.values(EXTERNAL)) Object.assign(m, { status: 'unloaded', failed: null, proc: null, loading: null });
 
@@ -223,8 +223,8 @@ function externalEntry(name) {
   const status = { value: m.status };
   if (m.failed) Object.assign(status, m.failed);
   return {
-    // Aliases still route (externalName) but stay out of the list: Llama Chat would show them instead of the SAI name.
-    id: name, aliases: [], tags: [], object: 'model', owned_by: 'sai-llm', created: CREATED,
+    // Aliases still route (externalName) but stay out of the list: Llama Chat would show them instead of the SAIAS name.
+    id: name, aliases: [], tags: [], object: 'model', owned_by: 'saias-llm', created: CREATED,
     status, architecture: { input_modalities: ['text', 'image'], output_modalities: ['text'] },
     source: 'preset', can_remove: false, context_length: m.ctx,
   };
@@ -242,7 +242,7 @@ function forward(req, res, port, body) {
     ur.pipe(res);
   });
   up.on('error', err => {
-    if (!res.headersSent) sendError(res, 502, `SAI backend on port ${port} is unavailable: ${err.message}`);
+    if (!res.headersSent) sendError(res, 502, `SAIAS backend on port ${port} is unavailable: ${err.message}`);
     else res.destroy();
   });
   res.on('close', () => { if (!res.writableFinished) up.destroy(); });
@@ -327,8 +327,8 @@ async function ensureRouter() {
     const proc = launch('router', []);
     const deadline = Date.now() + 60000;
     while ((state = await probe(ROUTER_PORT)) !== 'ready') {
-      if (proc.exitCode_ !== null) throw new Error(`The sai-flash router exited (code ${proc.exitCode_}). Log: ${proc.logFile}`);
-      if (Date.now() > deadline) throw new Error('The sai-flash router did not start within 60 s.');
+      if (proc.exitCode_ !== null) throw new Error(`The saias-flash router exited (code ${proc.exitCode_}). Log: ${proc.logFile}`);
+      if (Date.now() > deadline) throw new Error('The saias-flash router did not start within 60 s.');
       await delay(500);
     }
   } else {
@@ -357,8 +357,8 @@ async function main() {
   server.requestTimeout = 0;
   server.listen(PORT, HOST, () => {
     const url = `http://${HOST}:${PORT}/`;
-    log(`SAI hub ready - ${url}  (sai-flash, sai-smart, sai-pro)`);
-    log('OpenAI-compatible endpoint for Hermes: ' + url + 'v1. Press Ctrl+C to stop SAI and its models.');
+    log(`SAIAS hub ready - ${url}  (saias-flash, saias-smart, saias-pro)`);
+    log('OpenAI-compatible endpoint for Hermes: ' + url + 'v1. Press Ctrl+C to stop SAIAS and its models.');
     if (process.argv.includes('--open')) spawn('cmd.exe', ['/d', '/c', 'start', '', url], { windowsHide: true, detached: true, stdio: 'ignore' }).unref();
   });
 }

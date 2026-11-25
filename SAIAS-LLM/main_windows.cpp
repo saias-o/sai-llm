@@ -19,7 +19,7 @@
 namespace {
 
 using Microsoft::WRL::ComPtr;
-constexpr auto window_class = L"SaiLlmModelAdvisor";
+constexpr auto window_class = L"SaiasLlmModelAdvisor";
 constexpr UINT scan_complete = WM_APP + 1;
 constexpr int rescan_button = 100;
 constexpr int setup_button = 101;
@@ -30,7 +30,7 @@ constexpr int docs_button = 105;
 constexpr int advisor_button = 106;
 constexpr int chat_button = 107;
 constexpr UINT first_step_button = 110;
-constexpr auto step_count = sai::hermes_guide.size();
+constexpr auto step_count = saias::hermes_guide.size();
 constexpr float margin = 28;
 constexpr float header_height = 58;
 constexpr float recommendation_top = 126;
@@ -218,8 +218,8 @@ float Canvas::measure(std::wstring_view value, Type style, float width) const {
 }
 
 struct Scan {
-    sai::Hardware hardware;
-    std::optional<sai::Advice> advice;
+    saias::Hardware hardware;
+    std::optional<saias::Advice> advice;
     std::wstring error;
 };
 
@@ -254,7 +254,7 @@ private:
     void open_step_docs() const;
     void draw();
     void draw_setup_step(float width);
-    void recommendation(float y, float width, const sai::Choice* choice, bool everyday);
+    void recommendation(float y, float width, const saias::Choice* choice, bool everyday);
     void hardware(float width);
     void paint_button(const DRAWITEMSTRUCT& item) const;
     int px(float dips) const { return static_cast<int>(dips * dpi_ / 96.0f + 0.5f); }
@@ -313,7 +313,7 @@ bool Window::open(int show) {
     const LONG available_height = monitor.rcWork.bottom - monitor.rcWork.top;
     const LONG width = std::min(requested.right - requested.left, available_width);
     const LONG height = std::min(requested.bottom - requested.top, available_height);
-    window_ = CreateWindowExW(0, window_class, L"SAI-LLM | Model Advisor", style,
+    window_ = CreateWindowExW(0, window_class, L"SAIAS-LLM | Model Advisor", style,
         monitor.rcWork.left + (available_width - width) / 2,
         monitor.rcWork.top + (available_height - height) / 2, width, height,
         nullptr, nullptr, application_, this);
@@ -379,7 +379,7 @@ LRESULT Window::handle(UINT message, WPARAM wparam, LPARAM lparam) {
             chat_ = add_button(chat_button, L"Chat", true);
             for (std::size_t step = 0; step < step_count; ++step) {
                 step_buttons_[step] = add_button(first_step_button + static_cast<int>(step),
-                    sai::hermes_guide[step].label.data(), false);
+                    saias::hermes_guide[step].label.data(), false);
                 if (!step_buttons_[step]) {
                     return -1;
                 }
@@ -420,7 +420,7 @@ LRESULT Window::handle(UINT message, WPARAM wparam, LPARAM lparam) {
             } else {
                 SetBkMode(dc, TRANSPARENT);
                 FillRect(dc, &paint.rcPaint, reinterpret_cast<HBRUSH>(COLOR_WINDOW + 1));
-                constexpr auto error = L"SAI-LLM could not initialize the graphics surface.";
+                constexpr auto error = L"SAIAS-LLM could not initialize the graphics surface.";
                 TextOutW(dc, 24, 96, error, lstrlenW(error));
             }
             EndPaint(window_, &paint);
@@ -484,8 +484,8 @@ void Window::scan() {
     worker_ = std::jthread([this, window = window_] {
         Scan result;
         try {
-            result.hardware = sai::scan_hardware();
-            result.advice = sai::recommend(result.hardware);
+            result.hardware = saias::scan_hardware();
+            result.advice = saias::recommend(result.hardware);
         } catch (...) {
             result.error = L"Windows could not report the hardware inventory. Try scanning again.";
         }
@@ -519,9 +519,9 @@ void Window::show_view(View view) {
         return;
     }
     if (view == View::chat && !chat_panel_) {
-        chat_panel_ = sai::chat::create_panel(application_, window_);
+        chat_panel_ = saias::chat::create_panel(application_, window_);
         if (!chat_panel_) {
-            MessageBoxW(window_, L"The chat panel could not be opened.", L"SAI-LLM", MB_OK | MB_ICONERROR);
+            MessageBoxW(window_, L"The chat panel could not be opened.", L"SAIAS-LLM", MB_OK | MB_ICONERROR);
             return;
         }
     }
@@ -552,7 +552,7 @@ void Window::show_view(View view) {
 void Window::select_step(std::size_t step) {
     step_ = step;
     scroll_ = 0;
-    const auto& content = sai::hermes_guide[step_];
+    const auto& content = saias::hermes_guide[step_];
     if (step_ == 0 && GetFocus() == back_) {
         SetFocus(next_);
     }
@@ -567,7 +567,7 @@ void Window::select_step(std::size_t step) {
 }
 
 void Window::copy_step() const {
-    const auto value = sai::hermes_guide[step_].clipboard;
+    const auto value = saias::hermes_guide[step_].clipboard;
     std::wstring clipboard_text;
     clipboard_text.reserve(value.size() + 16);
     for (const auto character : value) {
@@ -595,7 +595,7 @@ void Window::copy_step() const {
 }
 
 void Window::open_step_docs() const {
-    const auto url = sai::hermes_guide[step_].url;
+    const auto url = saias::hermes_guide[step_].url;
     const auto result = ShellExecuteW(window_, L"open", url.data(), nullptr, nullptr, SW_SHOWNORMAL);
     if (reinterpret_cast<INT_PTR>(result) <= 32) {
         MessageBoxW(window_, L"Windows could not open the documentation link.", L"Hermes Setup", MB_OK | MB_ICONERROR);
@@ -631,7 +631,7 @@ void Window::resize() {
         MoveWindow(docs_, middle + px(6), button_top, px(162), px(34), TRUE);
         MoveWindow(next_, area.right - px(margin + 82), button_top, px(82), px(34), TRUE);
 
-        const auto& step = sai::hermes_guide[step_];
+        const auto& step = saias::hermes_guide[step_];
         const float inner = std::max(1.0f, dips(area.right) - 2 * (margin + step_padding));
         step_layout_.instructions_height = canvas_.measure(step.instructions, Type::wrapped, inner);
         step_layout_.example_height = canvas_.measure(step.example, Type::code, std::max(1.0f, inner - 28)) + 24;
@@ -730,7 +730,7 @@ void Window::draw() {
 
     canvas_.fill(bounds(0, 0, width, header_height), header);
     canvas_.rule(0, header_height - 1, width, border);
-    canvas_.label(L"SAI-LLM", Type::section, bounds(margin, 17, 180, 24));
+    canvas_.label(L"SAIAS-LLM", Type::section, bounds(margin, 17, 180, 24));
 
     if (view_ == View::guide) {
         canvas_.label(L"Hermes Setup", Type::title, bounds(margin, 73, content, 38));
@@ -751,7 +751,7 @@ void Window::draw_setup_step(float width) {
     canvas_.outline(card, border);
     const float x = margin + step_padding;
     const float inner = width - 2 * step_padding;
-    const auto& step = sai::hermes_guide[step_];
+    const auto& step = saias::hermes_guide[step_];
     canvas_.label(step.title, Type::section, bounds(x, step_top + 17, inner, 27));
     canvas_.label(step.instructions, Type::wrapped,
                   bounds(x, step_layout_.instructions_top(), inner, step_layout_.instructions_height));
@@ -762,7 +762,7 @@ void Window::draw_setup_step(float width) {
                   bounds(x, step_layout_.note_top(), inner, step_layout_.note_height), muted);
 }
 
-void Window::recommendation(float y, float width, const sai::Choice* choice, bool everyday) {
+void Window::recommendation(float y, float width, const saias::Choice* choice, bool everyday) {
     const auto accent = everyday ? green : red;
     const float left = margin + 16;
     const float model_x = left + 127;
@@ -823,7 +823,7 @@ void Window::hardware(float width) {
         const float ram_top = hardware_top + hardware_row;
         canvas_.rule(x, ram_top, width, border);
         canvas_.label(L"RAM", Type::body, bounds(label_x, ram_top + 9, 48, 20), muted);
-        canvas_.label(sai::gib(pc.ram_gib), Type::strong, bounds(value_x, ram_top + 9, value_width, 22));
+        canvas_.label(saias::gib(pc.ram_gib), Type::strong, bounds(value_x, ram_top + 9, value_width, 22));
 
         float row = ram_top + hardware_row;
         if (pc.adapters.empty()) {
@@ -835,12 +835,12 @@ void Window::hardware(float width) {
             canvas_.rule(x, row, width, border);
             canvas_.label(L"GPU", Type::body, bounds(label_x, row + 15, 48, 20), muted);
             canvas_.label(card.name, Type::strong, bounds(value_x, row + 15, value_width, 22));
-            const auto dedicated = card.dedicated_gib > 0 ? sai::gib(card.dedicated_gib) + L" dedicated" : L"Dedicated VRAM unavailable";
+            const auto dedicated = card.dedicated_gib > 0 ? saias::gib(card.dedicated_gib) + L" dedicated" : L"Dedicated VRAM unavailable";
             const float memory_top = row + (card.shared_gib > 0 ? 6 : 15);
             canvas_.label(dedicated, Type::strong, bounds(detail_x, memory_top, detail_width, 22),
                           text, DWRITE_TEXT_ALIGNMENT_TRAILING);
             if (card.shared_gib > 0) {
-                canvas_.label(sai::gib(card.shared_gib) + L" shared", Type::body,
+                canvas_.label(saias::gib(card.shared_gib) + L" shared", Type::body,
                               bounds(detail_x, row + 26, detail_width, 20), muted, DWRITE_TEXT_ALIGNMENT_TRAILING);
             }
             row += gpu_height;
@@ -858,7 +858,7 @@ int WINAPI wWinMain(HINSTANCE application, HINSTANCE, PWSTR, int show) {
     SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
     Window window(application);
     if (!window.open(show)) {
-        MessageBoxW(nullptr, L"The SAI-LLM window could not be opened.", L"SAI-LLM", MB_ICONERROR);
+        MessageBoxW(nullptr, L"The SAIAS-LLM window could not be opened.", L"SAIAS-LLM", MB_ICONERROR);
         return 1;
     }
     return window.run();

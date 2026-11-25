@@ -15,10 +15,10 @@
 #include <optional>
 #include <utility>
 
-namespace sai::chat {
+namespace saias::chat {
 namespace {
 
-constexpr auto class_name = L"SaiLlmChatPanel";
+constexpr auto class_name = L"SaiasLlmChatPanel";
 constexpr UINT_PTR refresh_timer = 1;
 constexpr int history_id = 200;
 constexpr int new_id = 201;
@@ -290,7 +290,7 @@ bool Panel::initialize() {
     SendMessageW(options_entry_, EM_LIMITTEXT, 65536, 0);
     SendMessageW(entry_, EM_SETMARGINS, EC_LEFTMARGIN | EC_RIGHTMARGIN, MAKELPARAM(px(8), px(8)));
     for (const auto& model : models) {
-        const auto label = model.id == L"sai-smart" ? L"sai-smart (Bonsai 2 27B)" : model.id.data();
+        const auto label = model.id == L"saias-smart" ? L"saias-smart (Bonsai 2 27B)" : model.id.data();
         SendMessageW(model_, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(label));
     }
     settings_ = archive_.load_settings();
@@ -636,7 +636,7 @@ void Panel::choose_model() {
         fill_reasoning();
         persist(conversation);
         if (has_pending_image() && !supports_images(models[conversation.model])) {
-            set_status(L"Remove the pending image or select sai-smart or sai-pro.", true);
+            set_status(L"Remove the pending image or select saias-smart or saias-pro.", true);
         }
     }
 }
@@ -895,7 +895,7 @@ void Panel::send() {
         return;
     }
     if (has_pending_image() && !supports_images(models[conversation.model])) {
-        set_status(L"Remove the pending image or select sai-smart or sai-pro.", true);
+        set_status(L"Remove the pending image or select saias-smart or saias-pro.", true);
         return;
     }
     prompt = first == std::wstring::npos ? std::wstring{} : prompt.substr(first, prompt.find_last_not_of(L" \t\r\n") - first + 1);
@@ -942,16 +942,16 @@ void Panel::update_reply() {
     const bool visible_conversation = selected_ == active_;
     if (update.backend == BackendStatus::confirm_start && !update.finished && IsWindowEnabled(send_)) {
         const auto model = models[conversations_[active_].model].id;
-        const auto question = L"Start the SAI backend for " + std::wstring(model)
+        const auto question = L"Start the SAIAS backend for " + std::wstring(model)
             + L"? Your message will be sent as soon as the model is ready.";
-        if (MessageBoxW(GetAncestor(window_, GA_ROOT), question.c_str(), L"Start SAI backend",
+        if (MessageBoxW(GetAncestor(window_, GA_ROOT), question.c_str(), L"Start SAIAS backend",
                 MB_YESNO | MB_ICONQUESTION | MB_DEFBUTTON2) == IDYES) {
             request_->start_backend();
         } else {
             request_->stop();
         }
     } else if (update.backend == BackendStatus::loading && visible_conversation) {
-        set_status(L"Starting the SAI backend and loading the model\u2026");
+        set_status(L"Starting the SAIAS backend and loading the model\u2026");
     } else if (update.backend == BackendStatus::ready && pending_prompt_) {
         commit_pending_message();
         if (visible_conversation) {
@@ -970,7 +970,7 @@ void Panel::update_reply() {
             CHARRANGE selection{};
             SendMessageW(transcript_, EM_EXGETSEL, 0, reinterpret_cast<LPARAM>(&selection));
             if (partial_.empty()) {
-                append(L"SAI\r\n", green, true);
+                append(L"SAIAS\r\n", green, true);
             }
             append(update.text, text);
             if (follow && selection.cpMin == selection.cpMax) {
@@ -1032,7 +1032,7 @@ void Panel::append(std::wstring_view value, COLORREF color, bool bold) {
 }
 
 void Panel::append_message(const Message& message) {
-    append(message.from_user ? L"You\r\n" : L"SAI\r\n", message.from_user ? muted : green, true);
+    append(message.from_user ? L"You\r\n" : L"SAIAS\r\n", message.from_user ? muted : green, true);
     for (const auto& item : message.attachments) {
         append((item.is_image() ? L"Image: " : L"PDF: ") + item.name + L"\r\n", muted);
     }
@@ -1046,7 +1046,7 @@ void Panel::render_history() {
         append_message(message);
     }
     if (selected_ == active_ && !partial_.empty()) {
-        append(L"SAI\r\n", green, true);
+        append(L"SAIAS\r\n", green, true);
         append(partial_, text);
     }
     SendMessageW(transcript_, WM_SETREDRAW, TRUE, 0);
@@ -1070,4 +1070,4 @@ HWND create_panel(HINSTANCE instance, HWND parent) {
         0, 0, 0, 0, parent, nullptr, instance, nullptr);
 }
 
-} // namespace sai::chat
+} // namespace saias::chat

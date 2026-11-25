@@ -6,7 +6,7 @@
 
 namespace {
 
-void print_choice(const sai::Choice& choice) {
+void print_choice(const saias::Choice& choice) {
     std::wcout << choice.profile->name << L"  |  " << choice.profile->context << L" tokens\n";
     if (!choice.mode.empty()) {
         std::wcout << L"    " << choice.mode << L". ";
@@ -21,18 +21,18 @@ void print_choice(const sai::Choice& choice) {
 int main() {
     std::setlocale(LC_ALL, "");
     try {
-        const auto pc = sai::scan_hardware();
-        const auto advice = sai::recommend(pc);
-        std::wcout << L"SAI-LLM Model Advisor\n"
+        const auto pc = saias::scan_hardware();
+        const auto advice = saias::recommend(pc);
+        std::wcout << L"SAIAS-LLM Model Advisor\n"
                    << L"CPU: " << pc.cpu << L"  |  Physical cores: " << pc.physical_cores << L'\n'
-                   << L"Usable system RAM: " << sai::gib(pc.ram_gib) << L'\n';
+                   << L"Usable system RAM: " << saias::gib(pc.ram_gib) << L'\n';
         for (const auto& gpu : pc.adapters) {
             std::wcout << L"GPU: " << gpu.name;
             if (gpu.dedicated_gib > 0) {
-                std::wcout << L"  |  " << sai::gib(gpu.dedicated_gib) << L" dedicated";
+                std::wcout << L"  |  " << saias::gib(gpu.dedicated_gib) << L" dedicated";
             }
             if (gpu.shared_gib > 0) {
-                std::wcout << L"  |  " << sai::gib(gpu.shared_gib) << L" shared";
+                std::wcout << L"  |  " << saias::gib(gpu.shared_gib) << L" shared";
             }
             std::wcout << L'\n';
         }

@@ -1,5 +1,5 @@
 services:
-  sai-pro:
+  saias-pro:
     image: vllm/vllm-openai:inkling-2-mini
     gpus: all
     ipc: host
@@ -12,13 +12,13 @@ services:
       - --revision
       - b85c3cfa615fc413cc9af3379f491b963f3b586a
       - --served-model-name
-      - sai-pro
+      - saias-pro
       - --max-model-len
       - "1048576"
       - --max-num-seqs
       - "1"
       - --tensor-parallel-size
-      - "${SAI_PRO_TENSOR_PARALLEL_SIZE:-${SAI_MAX_TENSOR_PARALLEL_SIZE:-1}}"
+      - "${SAIAS_PRO_TENSOR_PARALLEL_SIZE:-${SAIAS_MAX_TENSOR_PARALLEL_SIZE:-1}}"
       - --default-chat-template-kwargs
       - '{"reasoning_effort":0.99}'
       - --reasoning-parser

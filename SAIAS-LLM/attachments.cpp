@@ -17,7 +17,7 @@
 #include <mutex>
 #include <string_view>
 
-namespace sai::chat {
+namespace saias::chat {
 namespace {
 
 constexpr std::size_t pdf_size_limit = 32 * 1024 * 1024;
@@ -85,7 +85,7 @@ public:
             }
         }
         if (!library_) {
-            throw std::wstring(L"PDF conversion needs pdfium.dll next to SAI-LLM.exe.");
+            throw std::wstring(L"PDF conversion needs pdfium.dll next to SAIAS-LLM.exe.");
         }
     }
     ~Library() { FreeLibrary(library_); }
@@ -254,7 +254,7 @@ AttachmentImport import_attachment(const std::filesystem::path& path, const Mode
             result.attachment.text = pdf_text(path, stop);
         } else if (extension == L".png" || extension == L".jpg" || extension == L".jpeg") {
             if (!supports_images(model)) {
-                throw std::wstring(L"Select sai-smart or sai-pro to attach images.");
+                throw std::wstring(L"Select saias-smart or saias-pro to attach images.");
             }
             result.attachment.image_url = image_url(path);
         } else {
@@ -266,4 +266,4 @@ AttachmentImport import_attachment(const std::filesystem::path& path, const Mode
     return result;
 }
 
-} // namespace sai::chat
+} // namespace saias::chat
