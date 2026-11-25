@@ -9,19 +9,23 @@ const HELP = `SAIAS - Self-updating Artificial Intelligence Agent System
 
 Usage: saias <command> [options]
 
-Commands
-  install            Detect the hardware, install the recommended profiles, set up Hermes
+Setup
+  install            Detect the hardware, install the recommended profiles, connect your tools
                      --profiles flash,smart,pro   choose profiles
                      --yes                        accept the defaults and licenses
                      --check                      report only, change nothing
-                     --no-hermes --no-shortcut    skip those integrations
-  start              Start the hub: Llama Chat and the OpenAI-compatible API on port 8090
-                     --open                       open Llama Chat in the browser
+                     --no-tools --no-shortcut --no-path   skip those steps
+  connect [tool...]  Point tools at SAIAS: hermes, opencode, codex, claude (default: detected ones)
   update             Install newer models from the latest catalog (--check, --yes)
   rollback           Return to the models installed before the last update
   adopt <folder>     Reuse runtimes and model files already on disk (--move, --verify)
-  status             Show the installation and the hub state (--json)
   clean              Delete files no profile uses any more (--yes)
+
+Run
+  start              Start the hub: Llama Chat and the local API on port 8090 (--open)
+  stop               Stop the hub and its model servers
+  status             Show the installation and the hub state (--json)
+  claude [options]   Run Claude Code on a SAIAS model (--profile smart|pro|flash)
 
 Environment
   SAIAS_HOME         data folder (default: %LOCALAPPDATA%\\SAIAS on Windows)
@@ -42,6 +46,13 @@ function parse(argv) {
   return opts;
 }
 
+async function stop() {
+  const { HUB_URL, hubRunning } = require('./installed');
+  if (!(await hubRunning())) { ui.info('SAIAS is not running.'); return; }
+  await fetch(`${HUB_URL}/saias/stop`, { method: 'POST', headers: { 'X-SAIAS': '1' } });
+  ui.ok('SAIAS stopped.');
+}
+
 async function main() {
   const [command = 'help', ...rest] = process.argv.slice(2);
   const opts = parse(rest);
@@ -50,18 +61,23 @@ async function main() {
     case 'install': {
       await manage.install(opts);
       if (opts.check) return;
-      if (!opts.noHermes) {
-        const { configure } = require('./integrations/hermes');
-        const { models, defaultModel } = installedModels();
-        await configure({ models, defaultModel, yes: opts.yes });
+      // --no-hermes is kept from the first installer: it skips only Hermes.
+      if (!opts.noTools) {
+        const tools = require('./integrations');
+        const ids = tools.ALL.filter(t => t.detect() && !(opts.noHermes && t.id === 'hermes')).map(t => t.id);
+        await tools.connect(ids, { yes: opts.yes });
       }
+      if (!opts.noPath) await require('./integrations/path').add({ yes: opts.yes });
       if (!opts.noShortcut) require('./integrations/shortcut').create();
       ui.step('Done');
       ui.info('Start SAIAS: Start-SAIAS.cmd, the SAIAS desktop shortcut, or "saias start --open".');
       ui.info('Llama Chat: http://127.0.0.1:8090/   API for Hermes and other tools: http://127.0.0.1:8090/v1');
       return;
     }
+    case 'connect': return require('./integrations').connect(opts._, { yes: opts.yes });
+    case 'claude': return require('./integrations/claude').launch(rest);
     case 'start': return require('./hub').start({ open: Boolean(opts.open) });
+    case 'stop': return stop();
     case 'update': return manage.update(opts);
     case 'rollback': return manage.rollback();
     case 'adopt': return manage.adopt(opts._[0], opts);
@@ -70,20 +86,6 @@ async function main() {
     case 'help': case '--help': case '-h': console.log(HELP); return;
     default: throw new Error(`Unknown command "${command}". Run "saias help".`);
   }
-}
-
-// Installed profiles as Hermes models, the most capable last (catalog order).
-function installedModels() {
-  const catalog = require('./catalog').installed();
-  const state = require('./store').load();
-  const models = [];
-  for (const [id, entry] of Object.entries(state.profiles)) {
-    const variant = catalog.profiles[id].variants.find(v => v.id === entry.variant);
-    const model = catalog.models[variant.model];
-    models.push({ id: 'saias-' + id, context: variant.server['ctx-size'] || model.context, vision: Boolean(model.vision) });
-  }
-  const preferred = ['saias-smart', 'saias-pro', 'saias-flash'].find(id => models.some(m => m.id === id));
-  return { models, defaultModel: preferred || models[0]?.id || null };
 }
 
 main().catch(e => {

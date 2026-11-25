@@ -12,6 +12,7 @@ const store = require('./store');
 const ui = require('./ui');
 const { downloadFile, extractArchives, hashFile } = require('./download');
 const { resolveProfile, resolveAll, recommended, filesFor } = require('./resolve');
+const { hubRunning } = require('./installed');
 
 const PREVIOUS_CATALOG = path.join(paths.home, 'catalog.previous.json');
 
@@ -306,14 +307,6 @@ async function adopt(folder, opts) {
 }
 
 // ---------------------------------------------------------------- status and clean
-
-async function hubRunning() {
-  const port = Number(process.env.SAIAS_HUB_PORT || 8090);
-  try {
-    const r = await fetch(`http://127.0.0.1:${port}/saias/status`, { signal: AbortSignal.timeout(1500) });
-    return r.ok ? await r.json() : null;
-  } catch { return null; }
-}
 
 async function status(opts) {
   const state = store.load();

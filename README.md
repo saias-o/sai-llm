@@ -18,8 +18,8 @@ This repository, saias-llm, contains the installer, the three model profiles, th
 ## Quick start (Windows)
 
 1. Clone this repository, or download it as a ZIP and extract it.
-2. Run `Install-SAIAS.cmd`. It installs a private copy of Node.js if needed, checks your hardware, recommends profiles, downloads and verifies the runtimes and models, and sets up web search, Hermes Agent and a **SAIAS** desktop shortcut. Running it again is safe: verified files are kept and interrupted downloads resume.
-3. Run `Start-SAIAS.cmd` or the **SAIAS** shortcut. It opens [Llama Chat](http://127.0.0.1:8090/) with every installed profile and the web tools. Hermes and other tools use the same server at `http://127.0.0.1:8090/v1`.
+2. Run `Install-SAIAS.cmd`. It installs a private copy of Node.js if needed, checks your hardware, recommends profiles, downloads and verifies the runtimes and models, sets up web search, and connects Hermes Agent and the coding tools it finds (OpenCode, Codex, Claude Code). It can also put `saias` on your PATH and create a **SAIAS** desktop shortcut. Running it again is safe: verified files are kept and interrupted downloads resume.
+3. Run `Start-SAIAS.cmd` or the **SAIAS** shortcut. It opens [Llama Chat](http://127.0.0.1:8090/) with every installed profile and the web tools. Hermes and the coding tools use the same server at `http://127.0.0.1:8090`.
 
 Already have model files or llama.cpp builds on disk? Run `saias adopt <folder>` before installing so they are reused instead of downloaded.
 
@@ -29,8 +29,11 @@ Already have model files or llama.cpp builds on disk? Run `saias adopt <folder>`
 
 | Command | What it does |
 | --- | --- |
-| `saias install` | Detects the hardware, installs the recommended profiles, configures Hermes and the shortcut. Options: `--profiles flash,smart,pro`, `--yes`, `--check`, `--no-hermes`, `--no-shortcut`. |
+| `saias install` | Detects the hardware, installs the recommended profiles and connects your tools. Options: `--profiles flash,smart,pro`, `--yes`, `--check`, `--no-tools`, `--no-path`, `--no-shortcut`. |
+| `saias connect [tool...]` | Points `hermes`, `opencode`, `codex` or `claude` at SAIAS; without names, every detected tool. |
 | `saias start` | Starts the hub. `--open` opens Llama Chat. |
+| `saias stop` | Stops the hub and its model servers. |
+| `saias claude` | Runs Claude Code on a SAIAS model (`--profile smart`; other options go to Claude Code). |
 | `saias update` | Fetches the latest catalog and installs the newer models it selects for this PC. `--check` only reports. |
 | `saias rollback` | Returns to the models installed before the last update. |
 | `saias adopt <folder>` | Registers runtimes and model files already on disk. `--move` moves them into the SAIAS folder (same drive only), `--verify` checks their sha256. |
@@ -76,6 +79,21 @@ The installer picks the first variant the PC can run. `"device": "auto"` selects
 | `web_research` | Searches and reads the best pages in one call. |
 
 The hub starts it for Llama Chat, which asks before each tool call until you choose **Always allow**. Local and private network addresses are blocked unless `SAIAS_WEB_ALLOW_PRIVATE=1` is set. Set `SAIAS_BROWSER` to use another Chromium browser. Test it from a terminal with `node mcp\saias-web.js search "your query"`.
+
+## Coding tools
+
+The hub serves three APIs on `http://127.0.0.1:8090`: OpenAI Chat Completions and Responses (`/v1/chat/completions`, `/v1/responses`) and the Anthropic Messages API (`/v1/messages`). The reasoning level each tool asks for (`reasoning_effort`, `reasoning.effort` or Anthropic `thinking`) is translated for the model behind the profile.
+
+| Tool | Set up by `saias connect` | Use |
+| --- | --- | --- |
+| OpenCode | Adds a `saias` provider to `~/.config/opencode/opencode.json`. Your default model changes only if you agree. | `/models`, then `saias/saias-pro` |
+| Codex | Adds a `saias` provider and profile to `~/.codex/config.toml`; your default model is not changed. | `codex --profile saias` |
+| Claude Code | Nothing: your Claude Code settings are not changed. | `saias claude`, or `saias claude --profile smart` |
+| Hermes Agent | Adds a `saias` provider and the web search server (see below). | `/model custom:saias:saias-pro` |
+
+Every config file is copied to `<file>.bak-saias-<timestamp>` before it is changed. Tools started this way start the hub in the background if it is not running; `saias stop` stops it. The hub keeps one model in memory at a time, so use one profile per tool session: switching profiles reloads the model. `saias claude` therefore points every Claude Code model slot (main, background and subagents) at the same profile.
+
+Other OpenAI-compatible tools (Continue, Cline, Aider, ...) work with the base URL `http://127.0.0.1:8090/v1`, any API key, and a model named `saias-flash`, `saias-smart` or `saias-pro`.
 
 ## Hermes
 

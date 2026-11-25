@@ -5,11 +5,13 @@
 
 const fs = require('node:fs');
 const path = require('node:path');
-const { execFileSync, spawnSync } = require('node:child_process');
+const { execFileSync } = require('node:child_process');
 const paths = require('../paths');
 const ui = require('../ui');
+const { HUB_URL } = require('../installed');
+const { which } = require('./util');
 
-const HUB = `http://127.0.0.1:${process.env.SAIAS_HUB_PORT || 8090}/v1`;
+const HUB = `${HUB_URL}/v1`;
 
 const MERGE = String.raw`
 import datetime, json, os, shutil, sys
@@ -34,11 +36,6 @@ with open(path, "w", encoding="utf-8") as f:
     yaml.safe_dump(cfg, f, sort_keys=True, allow_unicode=True, default_flow_style=False)
 `;
 
-function which(cmd) {
-  const out = spawnSync(process.platform === 'win32' ? 'where' : 'which', [cmd], { encoding: 'utf8', windowsHide: true });
-  return out.status === 0 ? out.stdout.split(/\r?\n/).find(Boolean) : null;
-}
-
 function hermesPython(hermes) {
   const venv = process.platform === 'win32' ? ['hermes-agent', 'venv', 'Scripts', 'python.exe'] : ['hermes-agent', 'venv', 'bin', 'python'];
   const candidates = [path.join(path.dirname(path.dirname(hermes)), ...venv), which('python3'), which('python')];
@@ -54,9 +51,15 @@ function installHermes() {
   }
 }
 
-// models: [{ id: "saias-smart", context, vision }]; defaultModel: id or null.
-async function configure({ models, defaultModel, yes }) {
+function detect() {
+  return true; // Offered on every install: the installer can set Hermes up from scratch.
+}
+
+// models: installed models, most capable first (see installed.js).
+async function configure({ models, yes }) {
   ui.step('Hermes');
+  // saias-smart answers fastest among the capable profiles: the everyday default for an agent.
+  const defaultModel = (models.find(m => m.profile === 'smart') || models[0]).id;
   let hermes = which('hermes');
   if (!hermes && (await ui.confirm('Hermes Agent is not installed. Install it with the official Nous Research installer?', true, yes))) {
     installHermes();
@@ -90,4 +93,4 @@ async function configure({ models, defaultModel, yes }) {
   if (setDefault) ui.ok(`Default Hermes model: custom:saias / ${defaultModel}`);
 }
 
-module.exports = { configure };
+module.exports = { id: 'hermes', name: 'Hermes Agent', detect, configure };

@@ -10,6 +10,7 @@
 //   POST /models/load|unload      start or stop a profile server
 //   GET  /models/sse              status events
 //   GET  /saias/status            hub status for the CLI and the native app
+//   POST /saias/stop              stop the hub and its servers (header X-SAIAS: 1)
 //   anything naming a model       routed to that profile's server (started if needed)
 //   anything else                 Llama Chat and MCP tools on the UI server
 // OpenAI "reasoning_effort" values are translated into each model's own chat template
@@ -258,6 +259,14 @@ async function handle(req, res) {
     return send(res, 200, { object: 'list', data: [...profiles.values()].map(modelEntry) });
   }
   if (req.method === 'GET' && p === '/models/sse') return modelEvents(req, res);
+  if (req.method === 'POST' && p === '/saias/stop') {
+    // A custom header cannot be sent cross-origin without a CORS preflight, which the hub never
+    // grants: web pages cannot stop SAIAS.
+    if (req.headers['x-saias'] !== '1') return sendError(res, 403, 'Missing X-SAIAS header');
+    send(res, 200, { stopping: true });
+    log('Stop requested.');
+    return setTimeout(() => shutdown(0), 100);
+  }
   if (req.method === 'GET' && p === '/saias/status') {
     return send(res, 200, { port: PORT, exclusive: EXCLUSIVE, profiles: [...profiles.values()].map(x => ({ id: x.name, status: x.status, model: x.model.name, variant: x.variant.id })) });
   }
@@ -294,7 +303,7 @@ async function handle(req, res) {
     try { await load(target); } catch (e) { return sendError(res, 503, e.message); }
   }
 
-  if (json && json.reasoning_effort !== undefined) {
+  if (json && llama.requestedLevel(json)) {
     json = llama.applyReasoning(json, target.variant);
     body = Buffer.from(JSON.stringify(json));
   }

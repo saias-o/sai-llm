@@ -72,12 +72,28 @@ function serverArgs({ alias, port, variant, device, files, template }) {
   return toArgs(options);
 }
 
-// Maps an OpenAI-style reasoning_effort onto the chat template arguments a model understands.
-// Unsupported levels fall back to the nearest supported one. Returns the request body to send.
+// The reasoning level a request asks for, in any of the APIs the hub serves:
+//   Chat Completions  reasoning_effort: "high"
+//   Responses (Codex) reasoning: { effort: "high" }
+//   Messages (Claude) thinking: { type: "enabled", budget_tokens: 8000 } or { type: "disabled" }
+function requestedLevel(body) {
+  if (body.reasoning_effort !== undefined) return String(body.reasoning_effort).toLowerCase();
+  if (body.reasoning?.effort) return String(body.reasoning.effort).toLowerCase();
+  if (body.thinking?.type === 'disabled') return 'none';
+  if (body.thinking?.type === 'enabled') {
+    const budget = Number(body.thinking.budget_tokens) || 0;
+    return budget >= 24000 ? 'xhigh' : budget >= 12000 ? 'high' : budget >= 4000 ? 'medium' : 'low';
+  }
+  return null;
+}
+
+// Maps the requested reasoning level onto the chat template arguments the model behind the
+// profile understands. Unsupported levels fall back to the nearest supported one. Explicit
+// chat_template_kwargs from the client win. Returns the request body to send.
 function applyReasoning(body, variant) {
   const spec = variant.reasoning;
-  if (!spec || body.reasoning_effort === undefined) return body;
-  const wanted = String(body.reasoning_effort).toLowerCase();
+  const wanted = requestedLevel(body);
+  if (!spec || !wanted) return body;
   const out = { ...body };
   delete out.reasoning_effort;
   const supported = Object.keys(spec.levels);
@@ -87,7 +103,6 @@ function applyReasoning(body, variant) {
     if (rank < 0) return out;
     level = supported.map(l => [l, Math.abs(REASONING_LEVELS.indexOf(l) - rank)]).sort((a, b) => a[1] - b[1])[0][0];
   }
-  // Explicit chat_template_kwargs from the client win over the mapped ones.
   out.chat_template_kwargs = { ...spec.levels[level], ...(body.chat_template_kwargs || {}) };
   return out;
 }
@@ -96,4 +111,4 @@ function templatePath(root, model) {
   return model.template ? path.join(root, model.template) : null;
 }
 
-module.exports = { version, listDevices, backendOf, pickDevice, serverArgs, applyReasoning, templatePath, toArgs };
+module.exports = { version, listDevices, backendOf, pickDevice, serverArgs, applyReasoning, requestedLevel, templatePath, toArgs };
