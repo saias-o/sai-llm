@@ -1,0 +1,294 @@
+{
+  "schema": 1,
+  "version": "2026.11.26",
+  "runtimes": {
+    "unsloth-b12631-vulkan-win-x64": {
+      "name": "llama.cpp b12631 (Unsloth build), Vulkan",
+      "platform": "win32-x64",
+      "backend": "vulkan",
+      "build": 12631,
+      "supports": ["inkling", "router", "mcp", "webui"],
+      "license": "MIT",
+      "binary": "llama-server.exe",
+      "archives": [
+        {
+          "url": "https://github.com/unslothai/llama.cpp/releases/download/b12631-mix-acc0843/app-b12631-mix-acc0843-windows-x64-vulkan.zip",
+          "size": 28606121,
+          "sha256": "e822862e815ca6f274a16c480f62876306d8a8cf83495000ea9fd395249de4c1"
+        }
+      ]
+    },
+    "unsloth-b12631-cuda12-win-x64": {
+      "name": "llama.cpp b12631 (Unsloth build), CUDA 12",
+      "platform": "win32-x64",
+      "backend": "cuda",
+      "build": 12631,
+      "supports": ["inkling", "router", "mcp", "webui"],
+      "license": "MIT",
+      "binary": "llama-server.exe",
+      "archives": [
+        {
+          "url": "https://github.com/unslothai/llama.cpp/releases/download/b12631-mix-acc0843/app-b12631-mix-acc0843-windows-x64-cuda12-portable.zip",
+          "size": 471886549,
+          "sha256": "bd292d790c7e4e7396de4b39438761af55886cf61d74c5e31ffc46716122a3bf"
+        }
+      ]
+    },
+    "prism-b12128-cuda12-win-x64": {
+      "name": "llama.cpp b12128 (PrismML fork), CUDA 12.4",
+      "platform": "win32-x64",
+      "backend": "cuda",
+      "build": 12128,
+      "supports": ["ptq1_0"],
+      "license": "MIT",
+      "binary": "llama-server.exe",
+      "archives": [
+        {
+          "url": "https://github.com/PrismML-Eng/llama.cpp/releases/download/prism-b12128-d7b2896/llama-prism-b12128-d7b2896-bin-win-cuda-12.4-x64.zip",
+          "size": 355011546,
+          "sha256": "14969ae6831abfc836295e8f4b8e09e686a063b559a8c974412001d9f5ce4f7f"
+        },
+        {
+          "url": "https://github.com/PrismML-Eng/llama.cpp/releases/download/prism-b12128-d7b2896/cudart-llama-bin-win-cuda-12.4-x64.zip",
+          "size": 391443627,
+          "sha256": "8c79a9b226de4b3cacfd1f83d24f962d0773be79f1e7b75c6af4ded7e32ae1d6"
+        }
+      ]
+    },
+    "prism-b12128-vulkan-win-x64": {
+      "name": "llama.cpp b12128 (PrismML fork), Vulkan",
+      "platform": "win32-x64",
+      "backend": "vulkan",
+      "build": 12128,
+      "supports": ["ptq1_0"],
+      "license": "MIT",
+      "binary": "llama-server.exe",
+      "archives": [
+        {
+          "url": "https://github.com/PrismML-Eng/llama.cpp/releases/download/prism-b12128-d7b2896/llama-prism-b12128-d7b2896-bin-win-vulkan-x64.zip",
+          "size": 28692091,
+          "sha256": "ec1479514a34272c815b3d194046d27003867aa9c95069d9cd3031b5c31e01ff"
+        }
+      ]
+    }
+  },
+  "models": {
+    "lfm3-1.7b-q4km": {
+      "name": "LFM3 1.7B Q4_K_M",
+      "publisher": "Liquid AI",
+      "license": {
+        "name": "LFM Open License v1.0",
+        "url": "https://huggingface.co/LiquidAI/LFM3-1.7B-GGUF/blob/cd0c74c575b5c416f3011b5b4c298077f26ca8c2/LICENSE",
+        "note": "Commercial use is restricted; read the license before using it for business."
+      },
+      "needs": [],
+      "vision": false,
+      "context": 262144,
+      "files": {
+        "model": {
+          "name": "LFM3-1.7B-Q4_K_M.gguf",
+          "url": "https://huggingface.co/LiquidAI/LFM3-1.7B-GGUF/resolve/cd0c74c575b5c416f3011b5b4c298077f26ca8c2/LFM3-1.7B-Q4_K_M.gguf",
+          "size": 1099627808,
+          "sha256": "3793e1e6e2266919d6e015287221b41100175a98eddaba92e111aed3b05c93c4"
+        }
+      }
+    },
+    "bonsai2-27b-ptq1": {
+      "name": "Ternary Bonsai 2 27B PTQ1_0",
+      "publisher": "PrismML",
+      "license": {
+        "name": "Apache-2.0",
+        "url": "https://huggingface.co/prism-ml/Ternary-Bonsai-2-27B-gguf/tree/839bd57023c1558945afea70a74fa83c054f35f9"
+      },
+      "needs": ["ptq1_0"],
+      "vision": true,
+      "context": 200000,
+      "files": {
+        "model": {
+          "name": "Ternary-Bonsai-2-27B-PTQ1_0.gguf",
+          "url": "https://huggingface.co/prism-ml/Ternary-Bonsai-2-27B-gguf/resolve/839bd57023c1558945afea70a74fa83c054f35f9/Ternary-Bonsai-2-27B-PTQ1_0.gguf",
+          "size": 5946648928,
+          "sha256": "53107f530aa52eb00912263ab1ee29bd199261c87cd7b4ad4ca1318c1fe33ee3"
+        },
+        "mmproj": {
+          "name": "Ternary-Bonsai-2-27B-mmproj-Q8_0.gguf",
+          "url": "https://huggingface.co/prism-ml/Ternary-Bonsai-2-27B-gguf/resolve/839bd57023c1558945afea70a74fa83c054f35f9/Ternary-Bonsai-2-27B-mmproj-Q8_0.gguf",
+          "size": 629246976,
+          "sha256": "6807ede61d570bb86ba34b756a0fa109edc33668604de867c6ea6d8f1d631903"
+        }
+      }
+    },
+    "inkling2-mini-q4kxl": {
+      "name": "Inkling 2 Mini UD-Q4_K_XL",
+      "publisher": "Thinking Machines Lab (GGUF by Unsloth)",
+      "license": {
+        "name": "Apache-2.0",
+        "url": "https://huggingface.co/unsloth/Inkling-2-Mini-GGUF/tree/45fd08764f2b0bf16b03a5483a80e5c7aaec8772"
+      },
+      "needs": ["inkling"],
+      "vision": true,
+      "context": 500000,
+      "template": "templates/Inkling-2-Mini-reasoning.jinja",
+      "files": {
+        "model": {
+          "name": "Inkling-2-Mini-UD-Q4_K_XL.gguf",
+          "url": "https://huggingface.co/unsloth/Inkling-2-Mini-GGUF/resolve/45fd08764f2b0bf16b03a5483a80e5c7aaec8772/Inkling-2-Mini-UD-Q4_K_XL.gguf",
+          "size": 17629759456,
+          "sha256": "e62d463c135ffe283df8d94b279a96ca145ac128b52ce854478613045bf4de15"
+        },
+        "mmproj": {
+          "name": "mmproj-F16.gguf",
+          "url": "https://huggingface.co/unsloth/Inkling-2-Mini-GGUF/resolve/45fd08764f2b0bf16b03a5483a80e5c7aaec8772/mmproj-F16.gguf",
+          "size": 639348160,
+          "sha256": "3bff75ffeb2d6e0371ba7bd42e30d26a7d98aea681fa44b03b5a20891cfa2c5f"
+        }
+      }
+    }
+  },
+  "profiles": {
+    "flash": {
+      "summary": "Fast everyday chat on any PC",
+      "always": true,
+      "variants": [
+        {
+          "id": "flash-vulkan",
+          "model": "lfm3-1.7b-q4km",
+          "runtime": "unsloth-b12631-vulkan-win-x64",
+          "requires": {},
+          "device": "auto",
+          "server": {
+            "ctx-size": 262144,
+            "parallel": 1,
+            "n-gpu-layers": 99,
+            "batch-size": 512,
+            "ubatch-size": 128,
+            "flash-attn": "on",
+            "cache-type-k": "q8_0",
+            "cache-type-v": "q8_0",
+            "jinja": true,
+            "temp": 0.1,
+            "top-k": 50,
+            "repeat-penalty": 1.1
+          },
+          "reasoning": {
+            "default": "none",
+            "levels": {
+              "none": { "enable_thinking": false },
+              "medium": { "enable_thinking": true }
+            }
+          }
+        }
+      ]
+    },
+    "smart": {
+      "summary": "Capable assistant with images and a 200k context",
+      "variants": [
+        {
+          "id": "smart-cuda",
+          "model": "bonsai2-27b-ptq1",
+          "runtime": "prism-b12128-cuda12-win-x64",
+          "requires": { "nvidiaVramGB": 8 },
+          "server": {
+            "ctx-size": 200000,
+            "parallel": 1,
+            "n-gpu-layers": 99,
+            "flash-attn": "on",
+            "cache-type-k": "q4_0",
+            "cache-type-v": "q4_0",
+            "cache-ram": 16384,
+            "jinja": true,
+            "no-reasoning-preserve": true,
+            "temp": 1.0,
+            "top-p": 0.95,
+            "top-k": 20,
+            "min-p": 0.05,
+            "chat-template-kwargs": { "reasoning_effort": "medium" }
+          },
+          "reasoning": {
+            "default": "medium",
+            "levels": {
+              "none": { "enable_thinking": false },
+              "low": { "reasoning_effort": "low" },
+              "medium": { "reasoning_effort": "medium" },
+              "high": { "reasoning_effort": "high" }
+            }
+          }
+        },
+        {
+          "id": "smart-vulkan",
+          "model": "bonsai2-27b-ptq1",
+          "runtime": "prism-b12128-vulkan-win-x64",
+          "requires": { "ramGB": 16 },
+          "device": "auto",
+          "slow": true,
+          "server": {
+            "ctx-size": 65536,
+            "parallel": 1,
+            "n-gpu-layers": 99,
+            "cache-type-k": "q4_0",
+            "cache-type-v": "q4_0",
+            "jinja": true,
+            "no-reasoning-preserve": true,
+            "temp": 1.0,
+            "top-p": 0.95,
+            "top-k": 20,
+            "min-p": 0.05,
+            "chat-template-kwargs": { "reasoning_effort": "medium" }
+          },
+          "reasoning": {
+            "default": "medium",
+            "levels": {
+              "none": { "enable_thinking": false },
+              "low": { "reasoning_effort": "low" },
+              "medium": { "reasoning_effort": "medium" },
+              "high": { "reasoning_effort": "high" }
+            }
+          }
+        }
+      ]
+    },
+    "pro": {
+      "summary": "Most capable, images and a 500k context (NVIDIA GPU, 32 GB RAM)",
+      "variants": [
+        {
+          "id": "pro-cuda",
+          "model": "inkling2-mini-q4kxl",
+          "runtime": "unsloth-b12631-cuda12-win-x64",
+          "requires": { "nvidiaVramGB": 8, "ramGB": 32 },
+          "server": {
+            "ctx-size": 500000,
+            "parallel": 1,
+            "fit": "on",
+            "fit-target": 2048,
+            "batch-size": 512,
+            "ubatch-size": 128,
+            "flash-attn": "on",
+            "cache-type-k": "q8_0",
+            "cache-type-v": "q8_0",
+            "jinja": true,
+            "no-reasoning-preserve": true,
+            "temp": 1,
+            "top-p": 1,
+            "top-k": 0,
+            "min-p": 0,
+            "chat-template-kwargs": { "reasoning_effort": 0.99 }
+          },
+          "reasoning": {
+            "default": "xhigh",
+            "levels": {
+              "none": { "reasoning_effort": "none" },
+              "minimal": { "reasoning_effort": "minimal" },
+              "low": { "reasoning_effort": "low" },
+              "medium": { "reasoning_effort": "medium" },
+              "high": { "reasoning_effort": "high" },
+              "xhigh": { "reasoning_effort": "xhigh" }
+            }
+          }
+        }
+      ]
+    }
+  },
+  "hub": {
+    "uiRuntimes": ["unsloth-b12631-vulkan-win-x64", "unsloth-b12631-cuda12-win-x64"]
+  }
+}

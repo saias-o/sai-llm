@@ -24,18 +24,23 @@ using picojson::value;
 struct Level {
     std::wstring_view label;
     const char* key;
-    double inkling_value;
 };
 
+// Keys are OpenAI reasoning_effort values. The SAIAS hub translates them for the model behind each
+// profile and falls back to the nearest level a model supports. "On" is kept only to read older
+// conversations and is sent as "medium".
 constexpr std::array levels{
-    Level{L"Model default", "default", 0},
-    Level{L"Off", "none", 0},
-    Level{L"On", "on", 0},
-    Level{L"Low", "low", 0.2},
-    Level{L"Medium", "medium", 0.7},
-    Level{L"High", "high", 0.9},
-    Level{L"Extra high", "xhigh", 0.99},
+    Level{L"Model default", "default"},
+    Level{L"Off", "none"},
+    Level{L"On", "medium"},
+    Level{L"Low", "low"},
+    Level{L"Medium", "medium"},
+    Level{L"High", "high"},
+    Level{L"Extra high", "xhigh"},
 };
+
+// The SAIAS hub serves every profile on one local endpoint (src/hub.js).
+constexpr unsigned short hub_port = 8090;
 
 constexpr std::size_t archive_limit = 32 * 1024 * 1024;
 constexpr std::size_t settings_limit = 1024 * 1024;
@@ -185,20 +190,8 @@ std::string encode_request(const Conversation& conversation, const Settings& set
         {"messages", value(std::move(messages))},
         {"stream", value(true)},
     };
-    const auto effort = conversation.reasoning;
-    const auto& level = levels.at(static_cast<std::size_t>(effort));
-    if (model.id == L"saias-flash") {
-        const bool thinking = effort == Reasoning::on;
-        body.emplace("chat_template_kwargs", value(object{{"enable_thinking", value(thinking)}}));
-        body.emplace("reasoning_format", value("deepseek"));
-    } else if (effort != Reasoning::preset) {
-        if (model.id == L"saias-pro") {
-            body.emplace("chat_template_kwargs", value(object{{"reasoning_effort", value(level.inkling_value)}}));
-        } else if (effort == Reasoning::off) {
-            body.emplace("chat_template_kwargs", value(object{{"enable_thinking", value(false)}}));
-        } else {
-            body.emplace("chat_template_kwargs", value(object{{"reasoning_effort", value(level.key)}}));
-        }
+    if (conversation.reasoning != Reasoning::preset) {
+        body.emplace("reasoning_effort", value(levels.at(static_cast<std::size_t>(conversation.reasoning)).key));
     }
     return value(std::move(body)).serialize();
 }
@@ -441,10 +434,10 @@ std::wstring server_message(const value& json) {
 struct Backend {
     std::filesystem::path project;
     unsigned short port;
-    std::wstring_view launch_arguments;
 };
 
-Backend backend_for(const Model& model) {
+// The SAIAS folder holding saias.cmd, found from the executable's location upwards.
+Backend find_backend() {
     std::array<wchar_t, 32768> name{};
     const auto length = GetModuleFileNameW(nullptr, name.data(), static_cast<DWORD>(name.size()));
     std::filesystem::path project;
@@ -452,27 +445,21 @@ Backend backend_for(const Model& model) {
         auto folder = std::filesystem::path(std::wstring_view(name.data(), length)).parent_path();
         for (; folder.is_absolute() && folder.has_relative_path(); folder = folder.parent_path()) {
             std::error_code error;
-            if (std::filesystem::is_regular_file(folder / L"Launch-Inkling.cmd", error)
-                && std::filesystem::is_regular_file(folder / L"Saias-models.ini", error)) {
+            if (std::filesystem::is_regular_file(folder / L"saias.cmd", error)
+                && std::filesystem::is_regular_file(folder / L"catalog" / L"catalog.json", error)) {
                 project = std::move(folder);
                 break;
             }
         }
     }
-    if (model.id == L"saias-pro") {
-        return {std::move(project), model.port, L" pro"};
-    }
-    if (model.id == L"saias-smart") {
-        return {std::move(project), model.port, L" smart"};
-    }
-    return {std::move(project), model.port, {}};
+    return {std::move(project), hub_port};
 }
 
 using ProcessHandle = std::unique_ptr<void, decltype(&CloseHandle)>;
 
 std::wstring launch_backend(const Backend& backend, ProcessHandle& process) {
     if (backend.project.empty()) {
-        return L"Could not find Launch-Inkling.cmd. Open SAIAS-LLM.exe from the SAIAS project or its build folder.";
+        return L"Could not find saias.cmd. Open SAIAS-LLM.exe from the SAIAS folder or its build folder.";
     }
     std::array<wchar_t, MAX_PATH> system{};
     const auto length = GetSystemDirectoryW(system.data(), static_cast<UINT>(system.size()));
@@ -480,8 +467,7 @@ std::wstring launch_backend(const Backend& backend, ProcessHandle& process) {
         return L"Could not locate the Windows command processor.";
     }
     const auto executable = std::filesystem::path(system.data()) / L"cmd.exe";
-    std::wstring command = L"cmd.exe /d /c .\\Launch-Inkling.cmd";
-    command += backend.launch_arguments;
+    std::wstring command = L"cmd.exe /d /c saias.cmd start";
     STARTUPINFOW startup{};
     startup.cb = sizeof(startup);
     PROCESS_INFORMATION information{};
@@ -567,10 +553,10 @@ std::wstring wait_for_backend(HINTERNET connection, const Backend& backend, cons
             return error_message(probe.error, backend.port);
         } else if (probe.status == 200) {
             alias = string(field(probe.properties, "model_alias"));
-            if (alias == utf8(model.id) || (model.id == L"saias-smart" && alias == "bonsai-2-27b")) {
+            if (alias == utf8(model.id)) {
                 return {};
             }
-            return L"The server on port " + std::to_wstring(backend.port) + L" is not serving " + std::wstring(model.id) + L".";
+            return L"The SAIAS hub is not serving " + std::wstring(model.id) + L". Run Install-SAIAS.cmd to install it.";
         } else {
             const auto message = server_message(probe.properties);
             if (probe.status != 503 || message != L"Loading model") {
@@ -582,8 +568,7 @@ std::wstring wait_for_backend(HINTERNET connection, const Backend& backend, cons
             DWORD code = 0;
             GetExitCodeProcess(process.get(), &code);
             return L"The SAIAS backend exited during startup (code " + std::to_wstring(code)
-                + L"). Run Launch-Inkling.cmd" + std::wstring(backend.launch_arguments)
-                + L" from the SAIAS project folder to see the startup error.";
+                + L"). Run Start-SAIAS.cmd to see the startup error.";
         }
         WaitForSingleObject(stop, 500);
     }
@@ -710,7 +695,7 @@ template <typename SetBackendStatus, typename Publish>
 std::wstring run_request(const Conversation& conversation, const Settings& settings, HANDLE stop, HANDLE confirmed,
         SetBackendStatus set_backend_status, Publish publish) {
     const auto& model = models.at(conversation.model);
-    const auto backend = backend_for(model);
+    const auto backend = find_backend();
     // Both the readiness checks and the chat request use the same fixed loopback endpoint.
     InternetHandle session(WinHttpOpen(L"SAIAS-LLM/1.0", WINHTTP_ACCESS_TYPE_NO_PROXY,
         WINHTTP_NO_PROXY_NAME, WINHTTP_NO_PROXY_BYPASS, WINHTTP_FLAG_ASYNC));
@@ -741,16 +726,8 @@ std::wstring_view reasoning_label(Reasoning effort) {
     return levels.at(static_cast<std::size_t>(effort)).label;
 }
 
-bool supports_reasoning(const Model& model, Reasoning effort) {
-    if (effort == Reasoning::preset || effort == Reasoning::off) {
-        return true;
-    }
-    if (model.id == L"saias-flash") {
-        return effort == Reasoning::on;
-    }
-    if (model.id == L"saias-smart") {
-        return effort == Reasoning::medium || effort == Reasoning::extra_high;
-    }
+bool supports_reasoning(const Model&, Reasoning effort) {
+    // Every profile accepts every level: the hub maps it to the closest one the model supports.
     return effort != Reasoning::on;
 }
 
@@ -781,7 +758,7 @@ Archive::Archive() {
         const DWORD length = GetEnvironmentVariableW(L"LOCALAPPDATA", local.data(), size);
         if (length && length < size) {
             local.resize(length);
-            directory_ = std::filesystem::path(local) / L"SAIAS-LLM" / L"Conversations";
+            directory_ = std::filesystem::path(local) / L"SAIAS" / L"Conversations";
         }
     }
 }

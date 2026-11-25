@@ -1,10 +1,7 @@
 **/build/
 **/models/
-**/unsloth-cpu/
-**/unsloth-vulkan/
 **/__pycache__/
 **/PDFium-licenses/
-/Saias-models.local.ini
 
 *.gguf
 *.gguf_file

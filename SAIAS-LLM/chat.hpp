@@ -15,14 +15,13 @@ enum class Reasoning { preset, off, on, low, medium, high, extra_high };
 
 struct Model {
     std::wstring_view id;
-    unsigned short port;
     Reasoning default_reasoning;
 };
 
 inline constexpr std::array models{
-    Model{L"saias-flash", 8082, Reasoning::off},
-    Model{L"saias-smart", 8080, Reasoning::medium},
-    Model{L"saias-pro", 8081, Reasoning::extra_high},
+    Model{L"saias-flash", Reasoning::off},
+    Model{L"saias-smart", Reasoning::medium},
+    Model{L"saias-pro", Reasoning::extra_high},
 };
 
 std::wstring_view reasoning_label(Reasoning effort);

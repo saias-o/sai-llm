@@ -49,9 +49,9 @@ inline constexpr std::array<GuideStep, 4> hermes_guide{{
         L"the runtimes and models for the recommended profiles, installs Node.js and Hermes Agent if they are "
         L"missing, and adds the SAIAS provider and web search to Hermes.",
         LR"(.\Install-SAIAS.cmd
-.\Install-SAIAS.cmd -Profiles flash,smart -Yes
-.\Install-SAIAS.cmd -Check)",
-        L"Running it again is safe: installed files are kept and interrupted downloads resume. -Check reports "
+.\Install-SAIAS.cmd --profiles flash,smart --yes
+.\Install-SAIAS.cmd --check)",
+        L"Running it again is safe: installed files are kept and interrupted downloads resume. --check reports "
         L"what is installed without changing anything.",
         L"Copy command", LR"(.\Install-SAIAS.cmd)",
         L"Quick start", L"https://github.com/saias-o/saias-llm#quick-start-windows",
@@ -90,7 +90,7 @@ Hermes API   http://127.0.0.1:8090/v1)",
 /model custom:saias:saias-pro)",
         L"Hermes Desktop uses the same configuration: restart it and choose a SAIAS model from the chat model "
         L"menu. If a model cannot connect, check that the hub is running and that its profile is installed "
-        L"(.\\Install-SAIAS.cmd -Check).",
+        L"(saias.cmd status).",
         L"Copy model command", L"/model custom:saias:saias-smart",
         L"Hermes Desktop docs", L"https://hermes-agent.nousresearch.com/docs/user-guide/desktop",
     },

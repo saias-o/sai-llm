@@ -290,8 +290,8 @@ bool Panel::initialize() {
     SendMessageW(options_entry_, EM_LIMITTEXT, 65536, 0);
     SendMessageW(entry_, EM_SETMARGINS, EC_LEFTMARGIN | EC_RIGHTMARGIN, MAKELPARAM(px(8), px(8)));
     for (const auto& model : models) {
-        const auto label = model.id == L"saias-smart" ? L"saias-smart (Bonsai 2 27B)" : model.id.data();
-        SendMessageW(model_, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(label));
+        // Profile names only: the model behind a profile changes with catalog updates.
+        SendMessageW(model_, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(model.id.data()));
     }
     settings_ = archive_.load_settings();
     conversations_ = archive_.load();

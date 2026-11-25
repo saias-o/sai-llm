@@ -5,7 +5,7 @@
 //   fetch     read a page as Markdown (static fetch, headless Chrome/Edge for JavaScript pages, PDF text)
 //   research  search, then read the best pages in one call
 //
-// Node.js 22, no dependencies. Started by llama-server through --mcp-servers-json (see Launch-Inkling.cmd).
+// Node.js 22, no dependencies. Started by llama-server through --mcp-servers-json (see src/hub.js).
 // Environment: SAIAS_BROWSER (path to a Chromium browser), SAIAS_WEB_ALLOW_PRIVATE=1 (allow local/LAN URLs).
 
 'use strict';

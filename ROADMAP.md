@@ -2,7 +2,24 @@
 
 Goal: make SAIAS a serious open-source, local replacement for Claude and Codex that any PC user can install and use.
 
-Today the "self-updating" promise lives only in the README: models are hard-coded in the installer, and several settings only fit the original developer machine. The items below are ordered by impact.
+The items below are ordered by impact.
+
+## Done (catalog 2026.11.26)
+
+- Published model catalog (`catalog/catalog.json`) with stable profile names, hardware-based variants, sha256-verified downloads and model licenses shown at install time.
+- One Node.js CLI, `saias install | start | update | rollback | adopt | status | clean`, replacing the `.cmd` and PowerShell launchers and the `.ini` presets.
+- `saias update` and `saias rollback` with atomic switching and the previous installation kept.
+- Hub rewritten on the profile abstraction: every profile runs the same way on a free port, and OpenAI `reasoning_effort` is translated per model by the catalog. The native app no longer knows ports or model-specific arguments.
+- Machine-specific settings removed (the `D:\LLM\bonsai2` fallback, fixed thread counts, the two-GPU Vulkan split, per-model folders). Everything lives in `%LOCALAPPDATA%\SAIAS`; `"device": "auto"` picks the GPU.
+- Private Node.js LTS installed by `saias.cmd` when none is available (verified against nodejs.org checksums).
+- `saias adopt` reuses runtimes and model files already on disk.
+
+## Known gaps
+
+- **Tool-calling fixes are not in the published runtimes.** The b12631 release archives in the catalog predate three llama.cpp chat parser fixes (#29307, #32497, #32833) that Inkling tool calls need. Publish SAIAS runtime builds (for example as GitHub releases of this repository) or move to an upstream release that includes them.
+- **The native advisor duplicates the catalog rules.** `SAIAS-LLM/advisor.cpp` has its own hardware thresholds; it should read `saias status --json` or the catalog instead.
+- **Native chat capabilities are static.** Image support per profile is hard-coded in `SAIAS-LLM/chat.cpp`; it should come from the hub's `/v1/models` (`saias.vision`).
+- **No first-run benchmark yet**; variant choice uses hardware thresholds only.
 
 ## 1. Deliver "Always up to date" (the core promise)
 
