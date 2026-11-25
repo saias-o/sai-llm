@@ -3,6 +3,7 @@
 #include "hardware.hpp"
 #include "hermes_guide.hpp"
 #include "saias_cli.hpp"
+#include "webchat_windows.hpp"
 #include "third_party/picojson.h"
 
 #include <windows.h>
@@ -817,7 +818,7 @@ void Window::show_view(View view) {
         return;
     }
     if (view == View::chat && !chat_panel_) {
-        chat_panel_ = saias::chat::create_panel(application_, window_);
+        chat_panel_ = saias::webchat::create_panel(application_, window_);
         if (!chat_panel_) {
             MessageBoxW(window_, L"The chat panel could not be opened.", L"SAIAS", MB_OK | MB_ICONERROR);
             return;

@@ -838,8 +838,13 @@ async function onMessage(msg) {
   }
 }
 
+// The hub reuses the PDF reader for chat attachments.
+module.exports = { pdfToText };
+
 // CLI test mode: node saias-web.js search "query" | fetch URL | research "query"
-if (process.argv[2] && TOOLS.some(t => t.name === process.argv[2])) {
+if (require.main !== module) {
+  // Loaded as a module: no MCP server.
+} else if (process.argv[2] && TOOLS.some(t => t.name === process.argv[2])) {
   const tool = TOOLS.find(t => t.name === process.argv[2]);
   const arg = process.argv.slice(3).join(' ');
   const args = tool.name === 'fetch' ? { url: arg } : { query: arg };

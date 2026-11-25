@@ -11,6 +11,7 @@
 //   GET  /models/sse              status events
 //   GET  /saias/status            hub status for the CLI and the native app
 //   POST /saias/stop              stop the hub and its servers (header X-SAIAS: 1)
+//   /saias/chat/                  SAIAS Chat, the chat page of the SAIAS app (src/chat-ui.js)
 //   anything naming a model       routed to that profile's server (started if needed)
 //   anything else                 Llama Chat and MCP tools on the UI server
 // OpenAI "reasoning_effort" values are translated into each model's own chat template
@@ -298,6 +299,7 @@ async function handle(req, res) {
     log('Stop requested.');
     return setTimeout(() => shutdown(0), 100);
   }
+  if (await require('./chat-ui').handle(req, res, p)) return;
   if (req.method === 'GET' && p === '/saias/status') {
     return send(res, 200, { port: PORT, exclusive: EXCLUSIVE, profiles: [...profiles.values()].map(x => ({ id: x.name, status: x.status, model: x.model.name, variant: x.variant.id })) });
   }

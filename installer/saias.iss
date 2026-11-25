@@ -50,6 +50,7 @@ Source: "..\LICENSE"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\src\*"; DestDir: "{app}\src"; Flags: ignoreversion recursesubdirs
 Source: "..\catalog\*"; DestDir: "{app}\catalog"; Flags: ignoreversion recursesubdirs
 Source: "..\mcp\*"; DestDir: "{app}\mcp"; Flags: ignoreversion recursesubdirs
+Source: "..\ui\*"; DestDir: "{app}\ui"; Flags: ignoreversion recursesubdirs
 Source: "..\templates\*"; DestDir: "{app}\templates"; Flags: ignoreversion recursesubdirs
 Source: "..\scripts\Get-Node.ps1"; DestDir: "{app}\scripts"; Flags: ignoreversion
 
