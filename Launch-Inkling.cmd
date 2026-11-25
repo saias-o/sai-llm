@@ -1,7 +1,11 @@
 @echo off
 setlocal
 
-if /i "%~1"=="max" goto :quantized_max
+if /i "%~1"=="pro" goto :quantized_pro
+if /i "%~1"=="max" (
+    echo sai-max is reserved for Qwen 4 27B Q4. Run Launch-Inkling.cmd pro for Inkling 2 Mini.
+    exit /b 1
+)
 if /i "%~1"=="smart" goto :bonsai_smart
 
 set "INKLING_HOME=%LOCALAPPDATA%\Inkling2Mini"
@@ -87,7 +91,7 @@ exit /b %INKLING_EXIT%
 call "%~dp0bonsai\Start-Bonsai.cmd"
 exit /b %errorlevel%
 
-:quantized_max
+:quantized_pro
 set "INKLING_HOME=%LOCALAPPDATA%\Inkling2Mini"
 set "INKLING_SERVER=%INKLING_HOME%\unsloth-cuda\llama-server.exe"
 set "INKLING_MODEL=%INKLING_HOME%\models\Inkling-2-Mini-UD-Q4_K_XL.gguf"
@@ -95,13 +99,13 @@ set "INKLING_PROJECTOR=%INKLING_HOME%\models\mmproj-F16.gguf"
 set "INKLING_TEMPLATE=%~dp0templates\Inkling-2-Mini-reasoning.jinja"
 
 for %%F in ("%INKLING_SERVER%" "%INKLING_MODEL%" "%INKLING_PROJECTOR%" "%INKLING_TEMPLATE%") do if not exist "%%~F" (
-    echo sai-max asset missing: "%%~F"
+    echo sai-pro asset missing: "%%~F"
     exit /b 1
 )
 
-echo sai-max - Inkling 2 Mini UD-Q4_K_XL - http://127.0.0.1:8081/v1
-echo Keep this window open while using sai-max. Press Ctrl+C to stop the server.
-"%INKLING_SERVER%" --model "%INKLING_MODEL%" --mmproj "%INKLING_PROJECTOR%" --alias sai-max ^
+echo sai-pro - Inkling 2 Mini UD-Q4_K_XL - http://127.0.0.1:8081/v1
+echo Keep this window open while using sai-pro. Press Ctrl+C to stop the server.
+"%INKLING_SERVER%" --model "%INKLING_MODEL%" --mmproj "%INKLING_PROJECTOR%" --alias sai-pro ^
     --host 127.0.0.1 --port 8081 --cors-origins localhost ^
     --ctx-size 500000 --parallel 1 --fit on --fit-target 2048 ^
     --batch-size 512 --ubatch-size 128 --flash-attn on --cache-type-k q8_0 --cache-type-v q8_0 ^

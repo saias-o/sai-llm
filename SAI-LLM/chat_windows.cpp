@@ -636,7 +636,7 @@ void Panel::choose_model() {
         fill_reasoning();
         persist(conversation);
         if (has_pending_image() && !supports_images(models[conversation.model])) {
-            set_status(L"Remove the pending image or select sai-smart or sai-max.", true);
+            set_status(L"Remove the pending image or select sai-smart or sai-pro.", true);
         }
     }
 }
@@ -895,7 +895,7 @@ void Panel::send() {
         return;
     }
     if (has_pending_image() && !supports_images(models[conversation.model])) {
-        set_status(L"Remove the pending image or select sai-smart or sai-max.", true);
+        set_status(L"Remove the pending image or select sai-smart or sai-pro.", true);
         return;
     }
     prompt = first == std::wstring::npos ? std::wstring{} : prompt.substr(first, prompt.find_last_not_of(L" \t\r\n") - first + 1);

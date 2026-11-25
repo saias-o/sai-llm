@@ -192,7 +192,7 @@ std::string encode_request(const Conversation& conversation, const Settings& set
         body.emplace("chat_template_kwargs", value(object{{"enable_thinking", value(thinking)}}));
         body.emplace("reasoning_format", value("deepseek"));
     } else if (effort != Reasoning::preset) {
-        if (model.id == L"sai-max") {
+        if (model.id == L"sai-pro") {
             body.emplace("chat_template_kwargs", value(object{{"reasoning_effort", value(level.inkling_value)}}));
         } else if (effort == Reasoning::off) {
             body.emplace("chat_template_kwargs", value(object{{"enable_thinking", value(false)}}));
@@ -246,6 +246,8 @@ Conversation decode_conversation(const std::filesystem::path& path) {
     auto id = wide(string(field(data, "model")));
     if (id == L"sai-big") {
         id = L"sai-smart";
+    } else if (id == L"sai-max") {
+        id = L"sai-pro";
     }
     const auto model = std::find_if(models.begin(), models.end(), [&](const Model& item) { return item.id == id; });
     if (model != models.end()) {
@@ -454,8 +456,8 @@ Backend backend_for(const Model& model) {
             }
         }
     }
-    if (model.id == L"sai-max") {
-        return {std::move(project), model.port, L" max"};
+    if (model.id == L"sai-pro") {
+        return {std::move(project), model.port, L" pro"};
     }
     if (model.id == L"sai-smart") {
         return {std::move(project), model.port, L" smart"};
@@ -750,7 +752,7 @@ bool supports_reasoning(const Model& model, Reasoning effort) {
 }
 
 bool supports_images(const Model& model) {
-    return model.id == L"sai-smart" || model.id == L"sai-max";
+    return model.id == L"sai-smart" || model.id == L"sai-pro";
 }
 
 std::wstring Conversation::title() const {

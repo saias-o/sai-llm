@@ -11,10 +11,10 @@ namespace {
 
 // Estimates include engine and context overhead plus host headroom.
 // Dedicated VRAM is considered per adapter, since most engines do not pool it.
-constexpr Profile max_profile{L"sai-max", L"500,000", 0, 10, 32};
+constexpr Profile pro_profile{L"sai-pro", L"500,000", 0, 10, 32};
 constexpr Profile smart_profile{L"sai-smart", L"200,000", 0, 12, 16};
 constexpr Profile flash_profile{L"sai-flash", L"262,144", 6, 4, 5};
-constexpr const Profile* profiles[]{&max_profile, &smart_profile, &flash_profile};
+constexpr const Profile* profiles[]{&pro_profile, &smart_profile, &flash_profile};
 constexpr auto ignore_case = std::regex_constants::icase;
 
 bool datacenter_cuda_gpu(const Adapter& card) {
@@ -73,7 +73,7 @@ bool faster_flash_cpu(const Hardware& pc) {
 }
 
 std::optional<Choice> evaluate(const Profile& profile, const Hardware& pc) {
-    const bool max = &profile == &max_profile;
+    const bool pro = &profile == &pro_profile;
     const bool smart = &profile == &smart_profile;
     const bool flash = &profile == &flash_profile;
     const Adapter* best = nullptr;
@@ -82,7 +82,7 @@ std::optional<Choice> evaluate(const Profile& profile, const Hardware& pc) {
     if (pc.ram_gib >= profile.gpu_host_ram_gib) {
         for (const auto& card : pc.adapters) {
             if (card.dedicated_gib < profile.gpu_vram_gib - 0.125
-                || !supports_offload(card) || ((max || smart) && card.vendor != Vendor::nvidia)) {
+                || !supports_offload(card) || ((pro || smart) && card.vendor != Vendor::nvidia)) {
                 continue;
             }
             const bool fast = faster_gpu(card);
@@ -94,9 +94,9 @@ std::optional<Choice> evaluate(const Profile& profile, const Hardware& pc) {
     }
     if (best) {
         return Choice{
-            &profile, smart ? L"Bonsai 2 27B (CUDA)" : max ? L"llama.cpp CUDA offload" : L"llama.cpp GPU offload",
+            &profile, smart ? L"Bonsai 2 27B (CUDA)" : pro ? L"llama.cpp CUDA offload" : L"llama.cpp GPU offload",
             best->name + L" has " + gib(best->dedicated_gib) + L" of dedicated VRAM.",
-            !max && (flash || best_fast),
+            !pro && (flash || best_fast),
         };
     }
     if (flash && known_hybrid_flash(pc)) {

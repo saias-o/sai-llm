@@ -254,8 +254,7 @@ AttachmentImport import_attachment(const std::filesystem::path& path, const Mode
             result.attachment.text = pdf_text(path, stop);
         } else if (extension == L".png" || extension == L".jpg" || extension == L".jpeg") {
             if (!supports_images(model)) {
-                throw std::wstring(model.id == L"sai-flash" ? L"sai-flash accepts text and PDFs. Select sai-max for images."
-                    : L"Images require sai-max with the current configuration.");
+                throw std::wstring(L"Select sai-smart or sai-pro to attach images.");
             }
             result.attachment.image_url = image_url(path);
         } else {

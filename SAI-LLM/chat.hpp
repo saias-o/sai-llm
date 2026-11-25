@@ -22,7 +22,7 @@ struct Model {
 inline constexpr std::array models{
     Model{L"sai-flash", 8082, Reasoning::off},
     Model{L"sai-smart", 8080, Reasoning::medium},
-    Model{L"sai-max", 8081, Reasoning::extra_high},
+    Model{L"sai-pro", 8081, Reasoning::extra_high},
 };
 
 std::wstring_view reasoning_label(Reasoning effort);
