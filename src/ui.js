@@ -12,13 +12,25 @@ function size(bytes) {
   return Math.max(1, Math.round(bytes / 1e6)) + ' MB';
 }
 
-const step = text => console.log('\n' + color(36, '== ' + text));
-const ok = text => console.log(color(32, '  [ok] ') + text);
-const todo = text => console.log(color(33, '  [..] ') + text);
-const bad = text => console.log(color(31, '  [!!] ') + text);
-const info = text => console.log('  ' + text);
+// reporter: { event({ type, text }), progress(label, total) -> bar }. While one is set, output
+// goes to it instead of the console and prompts answer with their default: the graphical setup
+// asks its questions before it starts.
+let reporter = null;
+function setReporter(r) { reporter = r; }
+
+function emit(type, text, line) {
+  if (reporter) reporter.event({ type, text });
+  else console.log(line);
+}
+
+const step = text => emit('step', text, '\n' + color(36, '== ' + text));
+const ok = text => emit('ok', text, color(32, '  [ok] ') + text);
+const todo = text => emit('todo', text, color(33, '  [..] ') + text);
+const bad = text => emit('bad', text, color(31, '  [!!] ') + text);
+const info = text => emit('info', text, '  ' + text);
 
 function progress(label, total) {
+  if (reporter) return reporter.progress(label, total);
   let last = 0;
   let lastPct = -1;
   const line = done => `  -> ${label}  ${size(done)} / ${size(total)} (${Math.floor((done / total) * 100)}%)`;
@@ -42,7 +54,7 @@ function progress(label, total) {
 }
 
 async function ask(question, fallback, assumeYes) {
-  if (assumeYes || !process.stdin.isTTY) return fallback;
+  if (assumeYes || reporter || !process.stdin.isTTY) return fallback;
   const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
   try {
     const answer = (await rl.question('  ' + question + ' ')).trim();
@@ -57,4 +69,4 @@ async function confirm(question, fallback = true, assumeYes = false) {
   return /^y/i.test(answer);
 }
 
-module.exports = { size, step, ok, todo, bad, info, progress, ask, confirm };
+module.exports = { size, step, ok, todo, bad, info, progress, ask, confirm, setReporter };

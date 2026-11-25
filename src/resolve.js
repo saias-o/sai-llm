@@ -32,9 +32,10 @@ function resolveAll(catalog, hw) {
   return Object.keys(catalog.profiles).map(id => resolveProfile(catalog, id, hw));
 }
 
-// Profiles worth installing by default: everything that runs at full speed here.
+// Profiles installed by default: every profile this PC can run, slow ones included. They are
+// flagged as slow, and the advisor (recommend.js) still picks a fast one for everyday use.
 function recommended(catalog, hw) {
-  return resolveAll(catalog, hw).filter(r => !r.error && !r.variant.slow).map(r => r.profile);
+  return resolveAll(catalog, hw).filter(r => !r.error).map(r => r.profile);
 }
 
 // Every file a resolved profile needs, runtimes first.

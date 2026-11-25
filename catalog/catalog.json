@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "version": "2026.11.27",
+  "version": "2026.11.28",
   "runtimes": {
     "unsloth-b12631-vulkan-win-x64": {
       "name": "llama.cpp b12631 (Unsloth build), Vulkan",
@@ -586,6 +586,94 @@
             "chat-template-kwargs": {
               "reasoning_effort": "medium"
             }
+          },
+          "reasoning": {
+            "default": "medium",
+            "levels": {
+              "none": {
+                "enable_thinking": false
+              },
+              "low": {
+                "reasoning_effort": "low"
+              },
+              "medium": {
+                "reasoning_effort": "medium"
+              },
+              "high": {
+                "reasoning_effort": "high"
+              }
+            }
+          }
+        },
+        {
+          "id": "smart-cpu-lowmem",
+          "model": "bonsai2-27b-ptq1",
+          "runtime": "prism-b12128-vulkan-win-x64",
+          "requires": {
+            "ramGB": 8
+          },
+          "slow": true,
+          "note": "8 GB RAM: runs on the CPU and maps the weights from disk; expect slow answers.",
+          "server": {
+            "ctx-size": 16384,
+            "parallel": 1,
+            "n-gpu-layers": 0,
+            "cache-type-k": "q4_0",
+            "cache-type-v": "q4_0",
+            "jinja": true,
+            "no-reasoning-preserve": true,
+            "temp": 1,
+            "top-p": 0.95,
+            "top-k": 20,
+            "min-p": 0.05,
+            "chat-template-kwargs": {
+              "reasoning_effort": "medium"
+            },
+            "device": "none"
+          },
+          "reasoning": {
+            "default": "medium",
+            "levels": {
+              "none": {
+                "enable_thinking": false
+              },
+              "low": {
+                "reasoning_effort": "low"
+              },
+              "medium": {
+                "reasoning_effort": "medium"
+              },
+              "high": {
+                "reasoning_effort": "high"
+              }
+            }
+          }
+        },
+        {
+          "id": "smart-cpu-lowmem-linux",
+          "model": "bonsai2-27b-ptq1",
+          "runtime": "prism-b12128-vulkan-linux-x64",
+          "requires": {
+            "ramGB": 8
+          },
+          "slow": true,
+          "note": "8 GB RAM: runs on the CPU and maps the weights from disk; expect slow answers.",
+          "server": {
+            "ctx-size": 16384,
+            "parallel": 1,
+            "n-gpu-layers": 0,
+            "cache-type-k": "q4_0",
+            "cache-type-v": "q4_0",
+            "jinja": true,
+            "no-reasoning-preserve": true,
+            "temp": 1,
+            "top-p": 0.95,
+            "top-k": 20,
+            "min-p": 0.05,
+            "chat-template-kwargs": {
+              "reasoning_effort": "medium"
+            },
+            "device": "none"
           },
           "reasoning": {
             "default": "medium",

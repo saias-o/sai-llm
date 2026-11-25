@@ -25,6 +25,8 @@ function recommendations(catalog = catalogs.installed() || catalogs.bundled(), h
       runtime: r.runtime.name,
       variant: r.variant.id,
       slow: Boolean(r.variant.slow),
+      cpuOnly: r.variant.server?.device === 'none',
+      note: r.variant.note || null,
       context: r.variant.server['ctx-size'] || r.model.context,
       vision: Boolean(r.model.vision),
       benchmark: bench && installed && bench.variant === installed.variant ? { genTps: bench.genTps, rating: bench.rating, date: bench.date } : null,
@@ -35,7 +37,7 @@ function recommendations(catalog = catalogs.installed() || catalogs.bundled(), h
   const top = available[0];
   const mostCapable = top ? {
     id: top.id,
-    reason: `${top.model} on ${top.runtime}${top.slow ? '; it runs slowly on this PC' : ''}.`,
+    reason: `${top.model} on ${top.cpuOnly ? 'the CPU' : top.runtime}${top.slow ? '; it runs slowly on this PC' : ''}.`,
   } : null;
 
   const measured = available.find(p => p.benchmark && p.benchmark.rating !== 'slow');

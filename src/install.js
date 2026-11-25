@@ -14,7 +14,8 @@ const { downloadFile, extractArchives, hashFile } = require('./download');
 const { resolveProfile, resolveAll, recommended, filesFor } = require('./resolve');
 const { hubRunning } = require('./installed');
 
-const PREVIOUS_CATALOG = path.join(paths.home, 'catalog.previous.json');
+// A getter: the setup can move the data folder after this module is loaded.
+const previousCatalog = () => path.join(paths.home, 'catalog.previous.json');
 
 // ---------------------------------------------------------------- helpers
 
@@ -95,7 +96,7 @@ async function installResolution(state, r) {
 function snapshotPrevious(state) {
   if (!Object.keys(state.profiles).length) return;
   state.previous = { catalogVersion: state.catalogVersion, profiles: structuredClone(state.profiles) };
-  if (fs.existsSync(paths.installedCatalog)) fs.copyFileSync(paths.installedCatalog, PREVIOUS_CATALOG);
+  if (fs.existsSync(paths.installedCatalog)) fs.copyFileSync(paths.installedCatalog, previousCatalog());
 }
 
 function sameSelection(a, b) {
@@ -174,6 +175,25 @@ async function install(opts) {
   ui.ok(`Installed ${Object.keys(selection).map(profileName).join(', ')}`);
 }
 
+// What follows the downloads: tools, PATH, shortcut and the speed benchmark.
+// opts.tools: tool ids to connect (the graphical setup); without it, every detected tool.
+async function finish(opts) {
+  if (!opts.noTools) {
+    const tools = require('./integrations');
+    // --no-hermes is kept from the first installer: it skips only Hermes.
+    const ids = opts.tools || tools.ALL.filter(t => t.detect() && !(opts.noHermes && t.id === 'hermes')).map(t => t.id);
+    if (ids.length) await tools.connect(ids, { yes: opts.yes });
+  }
+  if (!opts.noPath) await require('./integrations/path').add({ yes: opts.yes });
+  if (!opts.noShortcut) require('./integrations/shortcut').create();
+  if (!opts.noBench && (await ui.confirm('Measure how fast each model runs on this PC now? It loads each model in turn (a few minutes).', true, opts.yes))) {
+    await require('./bench').run({});
+  }
+  ui.step('Done');
+  ui.info('Start SAIAS: Start-SAIAS.cmd, the SAIAS desktop shortcut, or "saias start --open".');
+  ui.info('Llama Chat: http://127.0.0.1:8090/   API for Hermes and other tools: http://127.0.0.1:8090/v1');
+}
+
 // ---------------------------------------------------------------- update and rollback
 
 // Compares the installed catalog with the latest one. Never prints: used by "update" and by
@@ -240,11 +260,11 @@ async function update(opts) {
 
 function rollback() {
   const state = store.load();
-  if (!state.previous || !fs.existsSync(PREVIOUS_CATALOG)) throw new Error('There is no previous installation to return to.');
+  if (!state.previous || !fs.existsSync(previousCatalog())) throw new Error('There is no previous installation to return to.');
   const current = { catalogVersion: state.catalogVersion, profiles: state.profiles };
   const currentCatalogFile = fs.readFileSync(paths.installedCatalog);
-  fs.copyFileSync(PREVIOUS_CATALOG, paths.installedCatalog);
-  fs.writeFileSync(PREVIOUS_CATALOG, currentCatalogFile);
+  fs.copyFileSync(previousCatalog(), paths.installedCatalog);
+  fs.writeFileSync(previousCatalog(), currentCatalogFile);
   state.profiles = state.previous.profiles;
   state.catalogVersion = state.previous.catalogVersion;
   state.previous = current;
@@ -367,7 +387,7 @@ function referenced(state) {
     }
   };
   add(catalogs.installed(), state.profiles);
-  try { add(catalogs.validate(JSON.parse(fs.readFileSync(PREVIOUS_CATALOG, 'utf8'))), state.previous?.profiles); } catch { /* no previous */ }
+  try { add(catalogs.validate(JSON.parse(fs.readFileSync(previousCatalog(), 'utf8'))), state.previous?.profiles); } catch { /* no previous */ }
   return keep;
 }
 
@@ -391,4 +411,4 @@ async function clean(opts) {
   ui.ok('Done.');
 }
 
-module.exports = { install, update, rollback, adopt, status, clean, profileName };
+module.exports = { install, finish, update, rollback, adopt, status, clean, profileName, currentCatalog, missingBytes };

@@ -28,7 +28,15 @@ test('variants follow the hardware', () => {
   assert.equal(resolveProfile(catalog, 'smart', hw({ nvidia: [{ name: 'RTX', vramGB: 12 }] })).variant.id, 'smart-cuda');
   assert.equal(resolveProfile(catalog, 'smart', hw()).variant.id, 'smart-vulkan');
   assert.match(resolveProfile(catalog, 'pro', hw()).error, /NVIDIA/);
-  assert.deepEqual(recommended(catalog, hw()), ['flash']); // smart-vulkan is marked slow
+  assert.deepEqual(recommended(catalog, hw()), ['flash', 'smart']); // compatible, even if slow
+  // 8 GB of RAM and a small NVIDIA GPU: flash, and smart on the CPU from memory-mapped weights.
+  const laptop = hw({ ramGB: 8, nvidia: [{ name: 'MX450', vramGB: 2 }] });
+  assert.equal(resolveProfile(catalog, 'smart', laptop).variant.id, 'smart-cpu-lowmem');
+  assert.deepEqual(recommended(catalog, laptop), ['flash', 'smart']);
+  assert.deepEqual(recommended(catalog, hw({ ramGB: 4 })), ['flash']);
+  const lowmem = llama.serverArgs({ alias: 'saias-smart', port: 1, variant: resolveProfile(catalog, 'smart', laptop).variant, files: { model: 'm.gguf' } }).join(' ');
+  assert.match(lowmem, /--device none/);
+  assert.match(lowmem, /--n-gpu-layers 0/);
   assert.deepEqual(recommended(catalog, hw({ ramGB: 48, nvidia: [{ name: 'RTX', vramGB: 12 }] })), ['flash', 'smart', 'pro']);
   assert.equal(resolveProfile(catalog, 'flash', hw({ platform: 'linux-x64' })).variant.id, 'flash-vulkan-linux');
   assert.equal(resolveProfile(catalog, 'smart', hw({ platform: 'darwin-arm64' })).variant.id, 'smart-metal');

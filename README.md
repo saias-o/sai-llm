@@ -17,12 +17,12 @@ This repository, saias-llm, contains the installer, the model catalog, the SAIAS
 
 ## Quick start (Windows)
 
-**Installer.** Run `SAIAS-Setup-<version>.exe`. It installs SAIAS for your user account (no administrator rights), then opens a console that picks, downloads and verifies the models for your PC. SAIAS then lives in the notification area.
+**Installer.** Run `SAIAS-Setup-<version>.exe`. It installs SAIAS for your user account (no administrator rights), then opens the setup window, which picks, downloads and verifies the models for your PC. SAIAS then lives in the notification area.
 
 **From the source.**
 
 1. Clone this repository, or download it as a ZIP and extract it.
-2. Run `Install-SAIAS.cmd`. It installs a private copy of Node.js if needed, checks your hardware, recommends profiles, downloads and verifies the runtimes and models, sets up web search, and connects Hermes Agent and the coding tools it finds (OpenCode, Codex, Claude Code). It can also put `saias` on your PATH and create a **SAIAS** desktop shortcut. Running it again is safe: verified files are kept and interrupted downloads resume.
+2. Run `Install-SAIAS.cmd`. It installs a private copy of Node.js if needed and opens the **setup window**. The advisor reads your hardware and preselects only the profiles this PC can run (on a laptop with 8 GB of RAM and no large NVIDIA GPU: `saias-flash` and `saias-smart`), so nothing it cannot use is downloaded. If the data folder's drive is too small, it suggests another drive. After you accept the licenses, the setup downloads and verifies the runtimes and models, sets up web search, and connects Hermes Agent and the coding tools it finds (OpenCode, Codex, Claude Code). It can also put `saias` on your PATH and create a **SAIAS** desktop shortcut. Running it again is safe: verified files are kept and interrupted downloads resume. `Install-SAIAS.cmd --console` runs the same installer in the terminal.
 3. Run `Start-SAIAS.cmd` or the **SAIAS** shortcut. It opens [Llama Chat](http://127.0.0.1:8090/) with every installed profile and the web tools. Hermes and the coding tools use the same server at `http://127.0.0.1:8090`.
 
 Already have model files or llama.cpp builds on disk? Run `saias adopt <folder>` before installing so they are reused instead of downloaded.
@@ -58,6 +58,7 @@ SAIAS builds on the same llama.cpp engine. Ollama, LM Studio and Jan are better 
 
 | Command | What it does |
 | --- | --- |
+| `saias setup` | Opens the setup window (an Edge or Chrome app window, else the default browser). `--console` runs `saias install` instead. |
 | `saias install` | Detects the hardware, installs the recommended profiles and connects your tools. Options: `--profiles flash,smart,pro`, `--yes`, `--check`, `--no-tools`, `--no-path`, `--no-shortcut`. |
 | `saias connect [tool...]` | Points `hermes`, `opencode`, `codex` or `claude` at SAIAS; without names, every detected tool. |
 | `saias start` | Starts the hub. `--open` opens Llama Chat. |
@@ -80,7 +81,7 @@ SAIAS builds on the same llama.cpp engine. Ollama, LM Studio and Jan are better 
 - `models`: model files with sizes, sha256 and licenses, plus what they need from a runtime (for example `ptq1_0` weights);
 - `profiles`: ordered variants, each with hardware requirements (`nvidiaVramGB`, `ramGB`), a model, a runtime, llama-server settings and a reasoning map.
 
-The installer picks the first variant the PC can run. `"device": "auto"` selects the GPU with the most memory, or the CPU when there is none.
+The installer picks the first variant the PC can run, and preselects every profile that has one; variants marked `slow` are labelled as such. `"device": "auto"` selects the GPU with the most memory, or the CPU when there is none.
 
 **Hub.** `saias start` runs `src/hub.js` on port 8090. Each profile runs in its own llama-server, started when it is first requested; by default one model is kept in memory at a time (`SAIAS_HUB_EXCLUSIVE=0` keeps several). A llama-server in router mode without models serves Llama Chat and the web tools. Server logs are in `%LOCALAPPDATA%\SAIAS\logs`.
 
@@ -90,14 +91,14 @@ The installer picks the first variant the PC can run. `"device": "auto"` selects
 
 **Runtimes.** The published llama.cpp builds lack three chat parser fixes that tool calls need. [runtimes/](runtimes/) keeps them as patches with a script that builds SAIAS runtimes on top of the official archives.
 
-**Data folder.** Runtimes, models, logs and the installation state live in `%LOCALAPPDATA%\SAIAS` (set `SAIAS_HOME` to use another drive). Downloads are verified against the catalog sha256 before use.
+**Data folder.** Runtimes, models, logs and the installation state live in `%LOCALAPPDATA%\SAIAS`. The setup window can put them on another drive; `%LOCALAPPDATA%\SAIAS\data-folder.txt` then holds the chosen folder. `SAIAS_HOME` overrides both. Downloads are verified against the catalog sha256 before use.
 
 ## Profiles in the current catalog
 
 | Profile | Model | Runtime | Context | Requirements |
 | --- | --- | --- | ---: | --- |
 | `saias-flash` | LFM3 1.7B Q4_K_M | llama.cpp b12631: Vulkan or CPU, Metal on macOS | 262,144 | Any PC |
-| `saias-smart` | Ternary Bonsai 2 27B PTQ1_0, images | PrismML llama.cpp b12128: CUDA, Metal; Vulkan or CPU is slower | 200,000 (65,536 on Vulkan or CPU) | NVIDIA GPU with 8 GB VRAM, Apple Silicon with 16 GB, or 16 GB RAM |
+| `saias-smart` | Ternary Bonsai 2 27B PTQ1_0, images | PrismML llama.cpp b12128: CUDA, Metal; Vulkan or CPU is slower | 200,000 (65,536 on Vulkan, 16,384 with 8 GB RAM) | NVIDIA GPU with 8 GB VRAM, Apple Silicon with 16 GB, or 8 GB RAM (slow: CPU, weights mapped from disk) |
 | `saias-pro` | Inkling 2 Mini UD-Q4_K_XL, images | llama.cpp b12631: CUDA, Metal | 500,000 (200,000 on Metal) | NVIDIA GPU with 8 GB VRAM and 32 GB RAM, or Apple Silicon with 48 GB |
 
 `saias-flash` is fast but small: use it for chat, and `saias-smart` or `saias-pro` for agent and coding work. Model licenses are shown, and must be accepted, during installation.
@@ -180,7 +181,7 @@ cmake --build build
 ./build/SAIAS
 ```
 
-**Installer.** `scripts\Build-Installer.ps1` builds the app in `build-release` and packages it with [Inno Setup 6](https://jrsoftware.org/isinfo.php) into `dist\SAIAS-Setup-<version>.exe` (version from `package.json`). Set `SAIAS_SIGN_CERT` to a code signing certificate thumbprint to sign the app and the installer with `signtool`; unsigned installers trigger a SmartScreen warning. Uninstalling stops SAIAS and asks before deleting the downloaded models in `%LOCALAPPDATA%\SAIAS`.
+**Installer.** `scripts\Build-Installer.ps1` builds the app in `build-release` and packages it with [Inno Setup 6](https://jrsoftware.org/isinfo.php) into `dist\SAIAS-Setup-<version>.exe` (version from `package.json`). Set `SAIAS_SIGN_CERT` to a code signing certificate thumbprint to sign the app and the installer with `signtool`; unsigned installers trigger a SmartScreen warning. Uninstalling stops SAIAS and asks before deleting the downloaded models in `%LOCALAPPDATA%\SAIAS` and in the data folder chosen during setup.
 
 ### Chat
 

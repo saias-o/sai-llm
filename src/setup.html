@@ -1,0 +1,638 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SAIAS Setup</title>
+<style>
+  :root {
+    --bg: #f6f7f9;
+    --panel: #ffffff;
+    --panel-2: #f1f3f6;
+    --text: #1b1f24;
+    --muted: #5d6673;
+    --faint: #8a93a0;
+    --border: #e1e5ea;
+    --accent: #3a5bd9;
+    --accent-ink: #ffffff;
+    --accent-soft: #e8edfc;
+    --ok: #1f8a4c;
+    --ok-soft: #e3f4ea;
+    --warn: #a35d00;
+    --warn-soft: #fbefdc;
+    --bad: #c23934;
+    --bad-soft: #fbe6e5;
+    --shadow: 0 1px 2px rgba(16, 24, 40, .05), 0 1px 3px rgba(16, 24, 40, .06);
+    color-scheme: light;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #111418;
+      --panel: #181c21;
+      --panel-2: #1f242a;
+      --text: #e7eaee;
+      --muted: #a3acb8;
+      --faint: #76808c;
+      --border: #2b3139;
+      --accent: #7d97ff;
+      --accent-ink: #0d1020;
+      --accent-soft: #232b45;
+      --ok: #4cc283;
+      --ok-soft: #173126;
+      --warn: #e5a54b;
+      --warn-soft: #3a2c17;
+      --bad: #f07b76;
+      --bad-soft: #3d1f1e;
+      --shadow: none;
+      color-scheme: dark;
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font: 14px/1.5 "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, Roboto, sans-serif;
+    display: flex;
+    flex-direction: column;
+  }
+  header {
+    display: flex; align-items: center; gap: 12px;
+    padding: 18px 28px 14px;
+  }
+  .mark {
+    width: 34px; height: 34px; border-radius: 9px;
+    background: var(--accent); color: var(--accent-ink);
+    display: grid; place-items: center; font-weight: 700; font-size: 15px; letter-spacing: .5px;
+  }
+  header h1 { font-size: 18px; margin: 0; font-weight: 600; }
+  header > div:nth-child(2) { min-width: 0; }
+  header .sub { color: var(--muted); font-size: 12.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .steps { margin-left: auto; display: flex; gap: 6px; font-size: 12.5px; color: var(--faint); flex: none; }
+  .steps span { padding: 3px 10px; border-radius: 99px; white-space: nowrap; }
+  .steps span.on { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+  main { flex: 1; overflow-y: auto; padding: 4px 28px 24px; }
+  .wrap { max-width: 920px; margin: 0 auto; }
+  section { margin-top: 18px; }
+  h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 0 0 8px; font-weight: 600; }
+  .panel { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; box-shadow: var(--shadow); }
+  .hw { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .hw div { padding: 12px 16px; border-left: 1px solid var(--border); min-width: 0; }
+  .hw div:first-child { border-left: 0; }
+  .hw b { display: block; font-size: 11.5px; color: var(--muted); font-weight: 500; }
+  .hw span { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .advisor {
+    display: flex; gap: 12px; align-items: flex-start;
+    padding: 12px 16px; margin-top: 10px;
+    background: var(--accent-soft); border-radius: 12px; color: var(--text);
+  }
+  .advisor .icon { color: var(--accent); flex: none; margin-top: 2px; }
+  .advisor p { margin: 0; }
+  .advisor .why { color: var(--muted); font-size: 12.5px; }
+  .models { display: grid; gap: 10px; }
+  .model {
+    display: grid; grid-template-columns: auto 1fr auto; gap: 4px 14px; align-items: start;
+    padding: 14px 16px; cursor: pointer;
+    transition: border-color .12s, background .12s;
+  }
+  .model:hover { border-color: var(--faint); }
+  .model.checked { border-color: var(--accent); }
+  .model.off { cursor: default; opacity: .62; }
+  .model.off:hover { border-color: var(--border); }
+  .model input { margin: 3px 0 0; width: 17px; height: 17px; accent-color: var(--accent); }
+  .model .name { font-weight: 600; font-size: 15px; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+  .model .desc { color: var(--muted); grid-column: 2; }
+  .model .meta { color: var(--faint); font-size: 12.5px; grid-column: 2; }
+  .model .note { color: var(--warn); font-size: 12.5px; grid-column: 2; }
+  .model .size { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .model .size small { display: block; color: var(--faint); font-size: 11.5px; }
+  .tag { font-size: 11px; font-weight: 600; padding: 1px 8px; border-radius: 99px; letter-spacing: .02em; }
+  .tag.rec { background: var(--ok-soft); color: var(--ok); }
+  .tag.slow { background: var(--warn-soft); color: var(--warn); }
+  .tag.inst { background: var(--panel-2); color: var(--muted); }
+  .tag.no { background: var(--bad-soft); color: var(--bad); }
+  .tag.req { background: var(--accent-soft); color: var(--accent); }
+  details.incompatible { margin-top: 10px; }
+  details.incompatible summary { cursor: pointer; color: var(--muted); font-size: 13px; padding: 4px 0; }
+  details.incompatible .models { margin-top: 8px; }
+  .checks { padding: 4px 0; }
+  .check { display: flex; gap: 12px; align-items: flex-start; padding: 10px 16px; border-top: 1px solid var(--border); cursor: pointer; }
+  .check:first-child { border-top: 0; }
+  .check input { margin: 3px 0 0; width: 16px; height: 16px; accent-color: var(--accent); flex: none; }
+  .check small { display: block; color: var(--faint); font-size: 12.5px; }
+  .check input[type=radio] { border-radius: 50%; }
+  .check .grow { flex: 1; min-width: 0; }
+  .check .path { font-family: "Cascadia Mono", Consolas, ui-monospace, monospace; font-size: 13px; word-break: break-all; }
+  .check .free { margin-left: auto; white-space: nowrap; font-variant-numeric: tabular-nums; color: var(--muted); font-size: 13px; }
+  .check .free.low { color: var(--bad); }
+  .check.other { align-items: center; }
+  .check.other button { padding: 5px 12px; font-weight: 500; }
+  .licenses { padding: 12px 16px; }
+  .licenses ul { margin: 0 0 10px; padding-left: 18px; color: var(--muted); }
+  .licenses a { color: var(--accent); }
+  .licenses label { display: flex; gap: 10px; align-items: center; font-weight: 600; cursor: pointer; }
+  .licenses input { width: 16px; height: 16px; accent-color: var(--accent); }
+  footer {
+    border-top: 1px solid var(--border); background: var(--panel);
+    padding: 12px 28px;
+  }
+  footer .wrap { display: flex; align-items: center; gap: 16px; }
+  footer .summary { color: var(--muted); font-size: 13px; }
+  footer .summary b { color: var(--text); font-weight: 600; }
+  footer .summary .bad { color: var(--bad); }
+  footer .actions { margin-left: auto; display: flex; gap: 8px; }
+  button {
+    font: inherit; font-weight: 600; border-radius: 8px; padding: 8px 18px; cursor: pointer;
+    border: 1px solid var(--border); background: var(--panel); color: var(--text);
+  }
+  button.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+  button:disabled { opacity: .45; cursor: not-allowed; }
+  button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .center { min-height: 60vh; display: grid; place-items: center; text-align: center; color: var(--muted); }
+  .spinner { width: 26px; height: 26px; border-radius: 50%; border: 3px solid var(--border); border-top-color: var(--accent); animation: spin 0.9s linear infinite; margin: 0 auto 12px; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .overall { padding: 18px 18px 16px; }
+  .overall .row { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
+  .overall .title { font-size: 16px; font-weight: 600; }
+  .overall .nums { color: var(--muted); font-variant-numeric: tabular-nums; font-size: 13px; }
+  .bar { height: 8px; border-radius: 99px; background: var(--panel-2); overflow: hidden; margin-top: 10px; }
+  .bar i { display: block; height: 100%; width: 0; background: var(--accent); border-radius: 99px; transition: width .25s ease; }
+  .bar.done i { background: var(--ok); }
+  .bar.fail i { background: var(--bad); }
+  .files { padding: 4px 0; }
+  .file { padding: 10px 16px; border-top: 1px solid var(--border); }
+  .file:first-child { border-top: 0; }
+  .file .row { display: flex; justify-content: space-between; gap: 12px; font-size: 13px; }
+  .file .row span:last-child { color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .file .bar { height: 5px; margin-top: 6px; }
+  .file .fnote { color: var(--faint); font-size: 12px; }
+  .log { padding: 10px 16px; font-size: 13px; max-height: 260px; overflow-y: auto; }
+  .log div { padding: 1px 0; }
+  .log .step { font-weight: 600; margin-top: 8px; }
+  .log .step:first-child { margin-top: 0; }
+  .log .ok::before { content: "✓ "; color: var(--ok); }
+  .log .bad, .log .error { color: var(--bad); }
+  .log .todo { color: var(--warn); }
+  .log .info { color: var(--muted); }
+  .result { text-align: center; padding: 34px 20px 26px; }
+  .result .big { width: 52px; height: 52px; border-radius: 50%; display: grid; place-items: center; margin: 0 auto 14px; }
+  .result .big.ok { background: var(--ok-soft); color: var(--ok); }
+  .result .big.bad { background: var(--bad-soft); color: var(--bad); }
+  .result h3 { margin: 0 0 6px; font-size: 19px; }
+  .result p { margin: 0 auto; color: var(--muted); max-width: 560px; }
+  .result code { background: var(--panel-2); padding: 1px 6px; border-radius: 5px; font-size: 12.5px; }
+  [hidden] { display: none !important; }
+  @media (max-width: 720px) {
+    header, main, footer { padding-left: 16px; padding-right: 16px; }
+    .hw { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .hw div:nth-child(3) { border-left: 0; }
+    .hw div:nth-child(n+3) { border-top: 1px solid var(--border); }
+    .steps { display: none; }
+    footer .wrap { flex-wrap: wrap; }
+  }
+</style>
+</head>
+<body>
+<header>
+  <div class="mark">S</div>
+  <div>
+    <h1>SAIAS Setup</h1>
+    <div class="sub" id="subtitle">Local AI models for this PC</div>
+  </div>
+  <div class="steps"><span id="s1" class="on">1 · Choose</span><span id="s2">2 · Install</span><span id="s3">3 · Done</span></div>
+</header>
+
+<main>
+  <div class="wrap">
+    <div id="loading" class="center"><div><div class="spinner"></div>Reading the hardware and the SAIAS catalog…</div></div>
+
+    <div id="choose" hidden>
+      <section>
+        <h2>This PC</h2>
+        <div class="panel hw" id="hw"></div>
+        <div class="advisor" id="advisor"></div>
+      </section>
+      <section>
+        <h2>Models</h2>
+        <div class="models" id="models"></div>
+        <details class="incompatible" id="incompatibleBox" hidden>
+          <summary id="incompatibleTitle"></summary>
+          <div class="models" id="incompatible"></div>
+        </details>
+      </section>
+      <section>
+        <h2>Data folder</h2>
+        <div class="panel checks" id="folders"></div>
+      </section>
+      <section id="toolsSection">
+        <h2>Connect your tools</h2>
+        <div class="panel checks" id="tools"></div>
+      </section>
+      <section id="optionsSection">
+        <h2>Options</h2>
+        <div class="panel checks" id="options"></div>
+      </section>
+      <section>
+        <h2>Licenses</h2>
+        <div class="panel licenses">
+          <ul id="licenses"></ul>
+          <label><input type="checkbox" id="accept"> I accept the licenses of the selected models</label>
+        </div>
+      </section>
+    </div>
+
+    <div id="installing" hidden>
+      <section>
+        <div class="panel overall">
+          <div class="row"><span class="title" id="phase">Preparing…</span><span class="nums" id="overallNums"></span></div>
+          <div class="bar" id="overallBar"><i></i></div>
+        </div>
+      </section>
+      <section>
+        <h2>Files</h2>
+        <div class="panel files" id="files"><div class="file"><span class="fnote">Waiting for the first download…</span></div></div>
+      </section>
+      <section>
+        <h2>Details</h2>
+        <div class="panel log" id="log"></div>
+      </section>
+    </div>
+
+    <div id="finished" hidden>
+      <section>
+        <div class="panel result" id="result"></div>
+      </section>
+      <section id="finalLogSection">
+        <h2>Details</h2>
+        <div class="panel log" id="finalLog"></div>
+      </section>
+    </div>
+  </div>
+</main>
+
+<footer>
+  <div class="wrap">
+    <div class="summary" id="summary"></div>
+    <div class="actions" id="actions"></div>
+  </div>
+</footer>
+
+<script>
+'use strict';
+const token = new URLSearchParams(location.search).get('t') || '';
+const $ = id => document.getElementById(id);
+let plan = null;
+let lastFiles = {};
+let events = null;
+let state = 'choose';
+
+function el(tag, attrs = {}, ...children) {
+  const node = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs)) {
+    if (v === null || v === undefined || v === false) continue;
+    if (k === 'class') node.className = v;
+    else if (k.startsWith('on')) node.addEventListener(k.slice(2), v);
+    else if (v === true) node.setAttribute(k, '');
+    else node.setAttribute(k, v);
+  }
+  for (const c of children.flat()) if (c !== null && c !== undefined && c !== false) node.append(c instanceof Node ? c : String(c));
+  return node;
+}
+
+function size(bytes) {
+  if (bytes >= 1e9) return (bytes / 1e9).toFixed(1) + ' GB';
+  if (bytes <= 0) return '0 MB';
+  return Math.max(1, Math.round(bytes / 1e6)) + ' MB';
+}
+const tokens = n => n >= 1000 ? Math.round(n / 1024) + 'k' : String(n);
+
+async function api(path, body) {
+  const res = await fetch(path, {
+    method: body ? 'POST' : 'GET',
+    headers: { 'X-SAIAS-Setup': token, ...(body ? { 'Content-Type': 'application/json' } : {}) },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+  return data;
+}
+
+function setStep(n) {
+  ['s1', 's2', 's3'].forEach((id, i) => $(id).classList.toggle('on', i === n - 1));
+}
+
+function show(view) {
+  for (const id of ['loading', 'choose', 'installing', 'finished']) $(id).hidden = id !== view;
+}
+
+const icon = {
+  advisor: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18h6M10 22h4M12 2a7 7 0 0 0-4 12.7c.6.5 1 1.2 1 2V17h6v-.3c0-.8.4-1.5 1-2A7 7 0 0 0 12 2z"/></svg>',
+  ok: '<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>',
+  bad: '<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 7v6M12 17h.01"/></svg>',
+};
+function svg(markup) { const t = document.createElement('template'); t.innerHTML = markup; return t.content.firstChild; }
+
+// ------------------------------------------------------------ step 1: choose
+
+function renderHardware() {
+  const hw = plan.hardware;
+  const gpus = hw.nvidia.length ? hw.nvidia.map(g => `${g.name.replace(/^NVIDIA /, '')} · ${g.vramGB} GB`).join(', ') : 'No NVIDIA GPU (Vulkan)';
+  const cells = [
+    ['Processor', hw.cpu.replace(/\s+with .*$/i, ''), `${hw.threads} threads`],
+    ['Memory', `${hw.ramGB} GB RAM`, null],
+    ['Graphics', gpus, null],
+    ['Free disk', plan.freeBytes === null ? 'Unknown' : size(plan.freeBytes), null],
+  ];
+  $('hw').replaceChildren(...cells.map(([k, v, extra]) => el('div', { title: extra ? `${v}, ${extra}` : v }, el('b', {}, k), el('span', {}, v))));
+  const a = plan.advice;
+  const lines = [];
+  if (a.mostCapable && a.everyday && a.mostCapable.id !== a.everyday.id) {
+    lines.push(el('p', {}, 'The advisor found ', el('b', {}, String(plan.profiles.filter(p => p.available).length)), ' compatible models. Most capable: ', el('b', {}, a.mostCapable.id), '. Everyday pick: ', el('b', {}, a.everyday.id), '.'));
+  } else if (a.mostCapable) {
+    lines.push(el('p', {}, 'The advisor recommends ', el('b', {}, a.mostCapable.id), ' for this PC.'));
+  } else {
+    lines.push(el('p', {}, 'The advisor found no SAIAS model for this PC.'));
+  }
+  lines.push(el('p', { class: 'why' }, 'Only the models this PC can run are selected, so nothing useless is downloaded. You can change the selection.'));
+  if (plan.suggestedFolder) {
+    const cur = plan.folders[0];
+    const alt = plan.folders.find(f => f.path === plan.suggestedFolder);
+    lines.push(el('p', { class: 'why' }, `Not enough room on ${cur.path.slice(0, 2)} (${size(cur.free)} free): the models go to `,
+      el('b', {}, alt.path), ` (${size(alt.free)} free). You can change it under Data folder.`));
+  }
+  $('advisor').replaceChildren(svg(icon.advisor), el('div', {}, ...lines));
+  $('advisor').firstChild.classList.add('icon');
+}
+
+function modelCard(p) {
+  const tags = [];
+  if (!p.available) tags.push(el('span', { class: 'tag no' }, 'Not compatible'));
+  else {
+    if (p.installed) tags.push(el('span', { class: 'tag inst' }, 'Installed'));
+    if (p.required) tags.push(el('span', { class: 'tag req' }, 'Always installed'));
+    if (plan.advice.mostCapable?.id === p.id) tags.push(el('span', { class: 'tag rec' }, 'Most capable here'));
+    if (plan.advice.everyday?.id === p.id) tags.push(el('span', { class: 'tag rec' }, 'Everyday pick'));
+    if (p.slow) tags.push(el('span', { class: 'tag slow' }, 'Slow on this PC'));
+  }
+  const box = el('input', { type: 'checkbox', 'data-profile': p.profile, 'aria-label': p.id });
+  box.checked = p.available && p.selected;
+  box.disabled = !p.available || p.required;
+  const missing = p.available ? p.files.filter(f => f.missing).reduce((s, f) => s + f.size, 0) : 0;
+  const card = el('label', { class: 'panel model' + (p.available ? '' : ' off') },
+    box,
+    el('div', { class: 'name' }, p.id, ...tags),
+    p.available
+      ? el('div', { class: 'size' }, missing ? size(missing) : 'Ready', el('small', {}, missing ? 'to download' : 'nothing to download'))
+      : el('div'),
+    el('div', { class: 'desc' }, p.summary),
+    p.available
+      ? el('div', { class: 'meta' }, `${p.model}${p.publisher ? ' · ' + p.publisher : ''} · ${tokens(p.context)} context${p.vision ? ' · images' : ''} · ${p.cpuOnly ? 'CPU' : p.runtime}`)
+      : el('div', { class: 'meta' }, 'This PC ' + p.reason.replace(/^needs/, 'would need').replace(/, needs/g, ' and')),
+    p.note ? el('div', { class: 'note' }, p.note) : null,
+  );
+  const sync = () => card.classList.toggle('checked', box.checked);
+  box.addEventListener('change', () => { sync(); refresh(); });
+  sync();
+  return card;
+}
+
+function checkRow(id, title, detail, checked) {
+  const box = el('input', { type: 'checkbox', id });
+  box.checked = checked;
+  box.addEventListener('change', refresh);
+  return el('label', { class: 'check' }, box, el('div', {}, title, detail ? el('small', {}, detail) : null));
+}
+
+let folder = null;   // { path, free }
+
+function renderFolders() {
+  const rows = plan.folders.map(f => {
+    const radio = el('input', { type: 'radio', name: 'folder', value: f.path });
+    radio.checked = f.path === folder.path;
+    radio.disabled = plan.folderLocked && !f.current;
+    radio.addEventListener('change', () => { folder = f; renderFolders(); refresh(); });
+    const note = f.current
+      ? (plan.folderLocked ? 'Set by SAIAS_HOME' : plan.installedSomething ? 'Current installation' : 'Default folder')
+      : 'Another drive';
+    return el('label', { class: 'check' }, radio,
+      el('div', { class: 'grow' }, el('div', { class: 'path' }, f.path), el('small', {}, note)),
+      el('span', { class: 'free', 'data-free': f.path }, f.free === null ? '' : size(f.free) + ' free'));
+  });
+  if (!plan.folderLocked && plan.hardware.platform.startsWith('win32')) {
+    const extra = folder && !plan.folders.some(f => f.path === folder.path) ? folder : null;
+    if (extra) {
+      const radio = el('input', { type: 'radio', name: 'folder', value: extra.path });
+      radio.checked = true;
+      rows.push(el('label', { class: 'check' }, radio,
+        el('div', { class: 'grow' }, el('div', { class: 'path' }, extra.path), el('small', {}, 'Chosen folder')),
+        el('span', { class: 'free', 'data-free': extra.path }, extra.free === null ? '' : size(extra.free) + ' free')));
+    }
+    const pick = el('button', { type: 'button', onclick: async () => {
+      pick.disabled = true;
+      pick.textContent = 'Waiting for the folder dialog…';
+      try {
+        const r = await api('/api/pick-folder', { start: folder.path });
+        if (r.folder) { folder = { path: r.folder, free: r.free }; }
+      } finally { renderFolders(); refresh(); }
+    } }, 'Choose another folder…');
+    rows.push(el('div', { class: 'check other' }, el('div', { class: 'grow' },
+      plan.installedSomething ? el('small', {}, 'Another folder starts a new installation: its models are downloaded again.') : el('small', {}, 'A SAIAS folder is created in the folder you choose.')), pick));
+  }
+  $('folders').replaceChildren(...rows);
+}
+
+function renderChoose() {
+  renderHardware();
+  const start = plan.folders.find(f => f.path === plan.suggestedFolder) || plan.folders[0];
+  if (!folder || !plan.folders.some(f => f.path === folder.path)) folder = start;
+  renderFolders();
+  const ok = plan.profiles.filter(p => p.available);
+  const no = plan.profiles.filter(p => !p.available);
+  $('models').replaceChildren(...ok.map(modelCard));
+  $('incompatible').replaceChildren(...no.map(modelCard));
+  $('incompatibleBox').hidden = !no.length;
+  $('incompatibleTitle').textContent = `Not compatible with this PC (${no.length})`;
+
+  $('tools').replaceChildren(...plan.tools.map(t => checkRow('tool-' + t.id, t.name,
+    t.present ? 'Found on this PC: SAIAS models are added to it.' : 'Not found: it is installed first, then connected.', t.present)));
+  $('toolsSection').hidden = !plan.tools.length;
+
+  const opts = [];
+  if (plan.options.shortcut) opts.push(checkRow('opt-shortcut', 'Desktop shortcut', 'Starts SAIAS and opens Llama Chat.', true));
+  if (plan.options.path) opts.push(checkRow('opt-path', 'Add "saias" to the PATH', 'Use the saias command in any new terminal.', true));
+  if (plan.options.bench) opts.push(checkRow('opt-bench', 'Measure the speed after installing', 'Loads each model in turn; can take several minutes.', false));
+  $('options').replaceChildren(...opts);
+  $('optionsSection').hidden = !opts.length;
+
+  $('accept').onchange = refresh;
+  $('subtitle').textContent = `Catalog ${plan.catalogVersion} · data folder ${plan.home}`;
+  refresh();
+}
+
+function selection() {
+  return [...document.querySelectorAll('#models input[data-profile]')].filter(b => b.checked).map(b => b.dataset.profile);
+}
+
+function selectedProfiles() {
+  const ids = selection();
+  return plan.profiles.filter(p => ids.includes(p.profile));
+}
+
+function downloadBytes(profiles) {
+  const seen = new Map();
+  for (const p of profiles) for (const f of p.files) if (f.missing) seen.set(f.key, f.size);
+  return [...seen.values()].reduce((s, n) => s + n, 0);
+}
+
+function refresh() {
+  if (state !== 'choose') return;
+  const chosen = selectedProfiles();
+  const licenses = new Map();
+  for (const p of chosen) licenses.set(p.model, p.license);
+  $('licenses').replaceChildren(...[...licenses].map(([model, l]) => el('li', {}, `${model}: `,
+    el('a', { href: l.url, target: '_blank', rel: 'noopener' }, l.name), l.note ? ` — ${l.note}` : '')));
+  const need = downloadBytes(chosen);
+  const free = folder ? folder.free : plan.freeBytes;
+  const tooBig = free !== null && need * 1.1 > free;
+  document.querySelectorAll('.free[data-free]').forEach(s => {
+    const f = s.dataset.free === folder.path ? folder : plan.folders.find(x => x.path === s.dataset.free);
+    s.classList.toggle('low', Boolean(f && f.free !== null && need * 1.1 > f.free));
+  });
+  const parts = [el('b', {}, chosen.length ? chosen.map(p => p.id).join(' + ') : 'No model selected')];
+  parts.push(need ? ` · ${size(need)} to download` : chosen.length ? ' · nothing to download' : '');
+  if (free !== null) parts.push(tooBig ? el('span', { class: 'bad' }, ` · only ${size(free)} free`) : ` · ${size(free)} free`);
+  $('summary').replaceChildren(...parts);
+  const btn = $('installBtn');
+  if (btn) {
+    btn.disabled = !chosen.length || !$('accept').checked || tooBig;
+    btn.textContent = need ? 'Install' : 'Apply';
+    btn.title = !$('accept').checked ? 'Accept the licenses first' : tooBig ? 'Not enough free disk space' : '';
+  }
+}
+
+// ------------------------------------------------------------ step 2: install
+
+function logLine(target, ev) {
+  if (!ev.text) return;
+  const line = el('div', { class: ev.type }, ev.text);
+  target.append(line);
+  target.scrollTop = target.scrollHeight;
+}
+
+function renderFiles() {
+  const bars = Object.values(lastFiles);
+  if (!bars.length) return;
+  $('files').replaceChildren(...bars.map(b => {
+    const pct = b.total ? Math.min(100, (b.done / b.total) * 100) : 0;
+    const status = b.state === 'done' ? 'Done' : b.state === 'fail' ? 'Failed' : `${size(b.done)} / ${size(b.total)} · ${Math.floor(pct)}%`;
+    return el('div', { class: 'file' },
+      el('div', { class: 'row' }, el('span', {}, b.label), el('span', {}, status)),
+      el('div', { class: 'bar' + (b.state === 'done' ? ' done' : b.state === 'fail' ? ' fail' : '') }, el('i', { style: `width:${b.state === 'done' ? 100 : pct}%` })),
+      b.note ? el('div', { class: 'fnote' }, b.note) : null);
+  }));
+  const planned = plan.plannedBytes || bars.reduce((s, b) => s + b.total, 0);
+  const done = bars.reduce((s, b) => s + (b.state === 'done' ? b.total : b.done || 0), 0);
+  const pct = planned ? Math.min(100, (done / planned) * 100) : 0;
+  $('overallBar').firstChild.style.width = pct + '%';
+  $('overallNums').textContent = `${size(Math.min(done, planned))} of ${size(planned)} · ${Math.floor(pct)}%`;
+}
+
+function startEvents() {
+  events?.close();
+  events = new EventSource('/api/events?t=' + encodeURIComponent(token));
+  events.onmessage = msg => {
+    // The stream is open from the start: it tells the setup that this page is still open.
+    if (state !== 'installing') return;
+    const ev = JSON.parse(msg.data);
+    if (ev.type === 'progress') {
+      lastFiles[ev.id] = ev;
+      renderFiles();
+      return;
+    }
+    if (ev.type === 'step') $('phase').textContent = ev.text === 'Done' ? 'Finishing…' : ev.text + '…';
+    if (ev.type === 'done') return finish(true);
+    if (ev.type === 'error') { logLine($('log'), ev); return finish(false, ev.text); }
+    logLine($('log'), ev);
+  };
+}
+
+async function install() {
+  const chosen = selectedProfiles();
+  const choice = {
+    profiles: chosen.map(p => p.profile),
+    tools: plan.tools.filter(t => $('tool-' + t.id)?.checked).map(t => t.id),
+    shortcut: Boolean($('opt-shortcut')?.checked),
+    path: Boolean($('opt-path')?.checked),
+    bench: Boolean($('opt-bench')?.checked),
+    home: plan.folderLocked ? null : folder.path,
+  };
+  plan.plannedBytes = downloadBytes(chosen);
+  plan.chosen = chosen;
+  state = 'installing';
+  lastFiles = {};
+  $('log').replaceChildren();
+  $('files').replaceChildren(el('div', { class: 'file' }, el('span', { class: 'fnote' }, plan.plannedBytes ? 'Waiting for the first download…' : 'Nothing to download: checking the installation…')));
+  $('overallBar').firstChild.style.width = '0%';
+  $('overallNums').textContent = plan.plannedBytes ? `0 MB of ${size(plan.plannedBytes)}` : '';
+  show('installing');
+  setStep(2);
+  $('summary').replaceChildren('Downloads resume where they stopped if the connection drops.');
+  $('actions').replaceChildren();
+  try {
+    await api('/api/install', choice);
+  } catch (e) {
+    finish(false, e.message);
+    return;
+  }
+  // After the server accepted the request: it clears the previous attempt's events first.
+  startEvents();
+}
+
+// ------------------------------------------------------------ step 3: done
+
+function finish(ok, message) {
+  if (state === 'finished') return;
+  state = 'finished';
+  setStep(3);
+  const names = (plan.chosen || []).map(p => p.id).join(', ');
+  $('result').replaceChildren(
+    el('div', { class: 'big ' + (ok ? 'ok' : 'bad') }, svg(ok ? icon.ok : icon.bad)),
+    el('h3', {}, ok ? 'SAIAS is ready' : 'The installation stopped'),
+    ok
+      ? el('p', {}, `Installed: ${names}. Start SAIAS to chat in Llama Chat; tools such as Hermes use `, el('code', {}, 'http://127.0.0.1:8090/v1'), '.')
+      : el('p', {}, message || 'An error occurred.', el('br'), 'Downloaded files are kept: running the setup again resumes where it stopped.'),
+  );
+  $('finalLog').replaceChildren(...[...$('log').childNodes].map(n => n.cloneNode(true)));
+  $('finalLogSection').hidden = !$('finalLog').childNodes.length;
+  show('finished');
+  $('summary').replaceChildren();
+  const close = el('button', { onclick: () => api('/api/close', {}).finally(() => window.close()) }, 'Close');
+  $('actions').replaceChildren(...(ok
+    ? [close, el('button', { class: 'primary', onclick: () => api('/api/start', {}).finally(() => window.close()) }, 'Start SAIAS')]
+    : [close, el('button', { class: 'primary', onclick: load }, 'Try again')]));
+}
+
+// ------------------------------------------------------------ start
+
+async function load() {
+  state = 'choose';
+  show('loading');
+  setStep(1);
+  $('summary').replaceChildren();
+  $('actions').replaceChildren();
+  try {
+    plan = await api('/api/plan');
+  } catch (e) {
+    $('loading').replaceChildren(el('div', {}, 'Could not read this PC: ' + e.message));
+    return;
+  }
+  show('choose');
+  if (!events || events.readyState === EventSource.CLOSED) startEvents();
+  $('actions').replaceChildren(el('button', { class: 'primary', id: 'installBtn', onclick: install }, 'Install'));
+  renderChoose();
+}
+
+load();
+</script>
+</body>
+</html>

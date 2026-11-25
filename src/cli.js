@@ -10,6 +10,8 @@ const HELP = `SAIAS - Self-updating Artificial Intelligence Agent System
 Usage: saias <command> [options]
 
 Setup
+  setup              Graphical installer: the advisor preselects the profiles this PC can run
+                     (--console runs "install" in the terminal instead; same options)
   install            Detect the hardware, install the recommended profiles, connect your tools
                      --profiles flash,smart,pro   choose profiles
                      --yes                        accept the defaults and licenses
@@ -70,22 +72,10 @@ async function main() {
     case 'install': {
       await manage.install(opts);
       if (opts.check) return;
-      // --no-hermes is kept from the first installer: it skips only Hermes.
-      if (!opts.noTools) {
-        const tools = require('./integrations');
-        const ids = tools.ALL.filter(t => t.detect() && !(opts.noHermes && t.id === 'hermes')).map(t => t.id);
-        await tools.connect(ids, { yes: opts.yes });
-      }
-      if (!opts.noPath) await require('./integrations/path').add({ yes: opts.yes });
-      if (!opts.noShortcut) require('./integrations/shortcut').create();
-      if (!opts.noBench && (await ui.confirm('Measure how fast each model runs on this PC now? It loads each model in turn (a few minutes).', true, opts.yes))) {
-        await require('./bench').run({});
-      }
-      ui.step('Done');
-      ui.info('Start SAIAS: Start-SAIAS.cmd, the SAIAS desktop shortcut, or "saias start --open".');
-      ui.info('Llama Chat: http://127.0.0.1:8090/   API for Hermes and other tools: http://127.0.0.1:8090/v1');
+      await manage.finish(opts);
       return;
     }
+    case 'setup': return require('./setup').run(opts);
     case 'connect': return require('./integrations').connect(opts._, { yes: opts.yes });
     case 'claude': return require('./integrations/claude').launch(rest);
     case 'start': return require('./hub').start({ open: Boolean(opts.open) });

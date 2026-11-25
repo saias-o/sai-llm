@@ -1,6 +1,6 @@
 ; SAIAS installer (Inno Setup 6). Build it with scripts\Build-Installer.ps1.
-; Per-user install, no administrator rights. After the files are copied, Install-SAIAS.cmd runs
-; in a console to pick and download the models for this PC.
+; Per-user install, no administrator rights. After the files are copied, Install-SAIAS.cmd opens
+; the graphical setup (src\setup.js) to pick and download the models for this PC.
 
 #ifndef AppVersion
   #define AppVersion "0.0.0"
@@ -64,9 +64,10 @@ Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: 
     ValueData: """{app}\SAIAS.exe"" --tray"; Flags: uninsdeletevalue; Tasks: autostart
 
 [Run]
-; Model setup in a console: hardware detection, profile choice, licenses and downloads.
+; Model setup in its own window: the advisor preselects the models this PC can run, then the
+; licenses, downloads and tools. Its console only shows a log, so it starts minimized.
 Filename: "{cmd}"; Parameters: "/d /c """"{app}\Install-SAIAS.cmd"" --no-shortcut"""; WorkingDir: "{app}"; \
-    StatusMsg: "Setting up the SAIAS models..."; Flags: waituntilterminated
+    StatusMsg: "Choosing and downloading the SAIAS models in the setup window..."; Flags: waituntilterminated runminimized
 Filename: "{app}\SAIAS.exe"; Description: "Open SAIAS"; Flags: postinstall nowait skipifsilent
 
 [UninstallRun]
@@ -103,18 +104,33 @@ begin
   RegWriteExpandStringValue(HKEY_CURRENT_USER, 'Environment', 'Path', Kept);
 end;
 
-// Models are large: ask before deleting them with the app.
+// Models are large: ask before deleting them with the app. The setup window may have put them
+// on another drive; data-folder.txt in the standard folder then names that folder.
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
 var
-  DataDir: String;
+  DataDir, OtherDir: AnsiString;
+  Question: String;
 begin
   if CurUninstallStep = usUninstall then
     RemoveFromUserPath(ExpandConstant('{app}'));
   if CurUninstallStep = usPostUninstall then
   begin
     DataDir := ExpandConstant('{localappdata}\SAIAS');
-    if DirExists(DataDir) and (MsgBox('Also delete the downloaded models, conversations and settings in ' + DataDir + '?',
-        mbConfirmation, MB_YESNO or MB_DEFBUTTON2) = IDYES) then
+    OtherDir := '';
+    if LoadStringFromFile(DataDir + '\data-folder.txt', OtherDir) then
+      OtherDir := Trim(OtherDir);
+    if (OtherDir <> '') and not DirExists(OtherDir) then
+      OtherDir := '';
+    if not DirExists(DataDir) and (OtherDir = '') then
+      exit;
+    Question := 'Also delete the downloaded models, conversations and settings in ' + DataDir;
+    if OtherDir <> '' then
+      Question := Question + ' and ' + OtherDir;
+    if MsgBox(Question + '?', mbConfirmation, MB_YESNO or MB_DEFBUTTON2) = IDYES then
+    begin
+      if OtherDir <> '' then
+        DelTree(OtherDir, True, True, True);
       DelTree(DataDir, True, True, True);
+    end;
   end;
 end;
