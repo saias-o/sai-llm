@@ -58,7 +58,7 @@
   }
   header {
     display: flex; align-items: center; gap: 12px;
-    padding: 18px 28px 14px;
+    padding: 14px 28px 10px;
   }
   .mark {
     width: 34px; height: 34px; border-radius: 9px;
@@ -493,14 +493,21 @@ function refresh() {
     el('a', { href: l.url, target: '_blank', rel: 'noopener' }, l.name), l.note ? ` — ${l.note}` : '')));
   const need = downloadBytes(chosen);
   const free = folder ? folder.free : plan.freeBytes;
-  const tooBig = free !== null && need * 1.1 > free;
+  // Blocked below 1 GB left after the downloads; a warning below plan.keepFreeBytes.
+  const left = f => (f.free === null ? Infinity : f.free - need * 1.1);
+  const tooBig = Boolean(folder) && left(folder) < 1e9;
+  const tight = !tooBig && Boolean(folder) && left(folder) < plan.keepFreeBytes;
   document.querySelectorAll('.free[data-free]').forEach(s => {
     const f = s.dataset.free === folder.path ? folder : plan.folders.find(x => x.path === s.dataset.free);
-    s.classList.toggle('low', Boolean(f && f.free !== null && need * 1.1 > f.free));
+    s.classList.toggle('low', Boolean(f && left(f) < plan.keepFreeBytes));
   });
   const parts = [el('b', {}, chosen.length ? chosen.map(p => p.id).join(' + ') : 'No model selected')];
   parts.push(need ? ` · ${size(need)} to download` : chosen.length ? ' · nothing to download' : '');
-  if (free !== null) parts.push(tooBig ? el('span', { class: 'bad' }, ` · only ${size(free)} free`) : ` · ${size(free)} free`);
+  if (free !== null) {
+    if (tooBig) parts.push(el('span', { class: 'bad' }, ` · only ${size(free)} free: choose another data folder`));
+    else if (tight) parts.push(el('span', { class: 'bad' }, ` · leaves only ${size(Math.max(0, free - need))} free on ${folder.path.slice(0, 2)}`));
+    else parts.push(` · ${size(free)} free`);
+  }
   $('summary').replaceChildren(...parts);
   const btn = $('installBtn');
   if (btn) {

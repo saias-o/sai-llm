@@ -21,6 +21,8 @@ const { recommendations } = require('./recommend');
 
 const PAGE = path.join(__dirname, 'setup.html');
 const IDLE_EXIT_MS = 2 * 60 * 1000;
+const KEEP_FREE_BYTES = 5e9;      // room left on the drive after the downloads
+const WINDOW = { width: 960, height: 780 };
 
 // ---------------------------------------------------------------- what the page shows
 
@@ -128,8 +130,10 @@ function plan(opts) {
   const need = uniqueMissingBytes(profiles.filter(p => p.selected));
   const fresh = !Object.keys(state.profiles).length;
   let suggested = null;
-  if (fresh && !process.env.SAIAS_HOME && folders[0].free !== null && folders[0].free < need * 1.1) {
-    const roomy = folders.slice(1).filter(f => f.free >= need * 1.1).sort((a, b) => b.free - a.free)[0];
+  // "Fits" keeps KEEP_FREE_BYTES free afterwards: filling the Windows drive breaks the PC.
+  const fits = f => f.free === null || f.free >= need * 1.1 + KEEP_FREE_BYTES;
+  if (fresh && !process.env.SAIAS_HOME && !fits(folders[0])) {
+    const roomy = folders.slice(1).filter(fits).sort((a, b) => b.free - a.free)[0];
     if (roomy) suggested = roomy.path;
   }
 
@@ -140,6 +144,7 @@ function plan(opts) {
     profiles,
     folders,
     suggestedFolder: suggested,
+    keepFreeBytes: KEEP_FREE_BYTES,
     folderLocked: Boolean(process.env.SAIAS_HOME),
     installedSomething: !fresh,
     tools: opts.noTools ? [] : toolList(),
@@ -243,6 +248,31 @@ function openDefaultBrowser(url) {
   spawn(cmd, args, { windowsHide: true, detached: true, stdio: 'ignore' }).unref();
 }
 
+// The primary screen's work area (without the taskbar) in Windows scaled pixels, the unit
+// Chromium uses for --window-size: 1536x816 on a 1080p screen at 125%. Null elsewhere.
+function workArea() {
+  if (process.platform !== 'win32') return null;
+  try {
+    const out = execFileSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command',
+      'Add-Type -AssemblyName System.Windows.Forms; $a = [System.Windows.Forms.Screen]::PrimaryScreen.WorkingArea; "$($a.X) $($a.Y) $($a.Width) $($a.Height)"'],
+    { encoding: 'utf8', windowsHide: true, timeout: 10000 });
+    const [x, y, width, height] = out.trim().split(/\s+/).map(Number);
+    return width > 0 && height > 0 ? { x, y, width, height } : null;
+  } catch {
+    return null;
+  }
+}
+
+// Window size and position: the preferred size, shrunk to fit the screen, centered.
+function windowBounds(area = workArea()) {
+  if (!area) return [`--window-size=${WINDOW.width},${WINDOW.height}`];
+  const width = Math.min(WINDOW.width, area.width - 40);
+  const height = Math.min(WINDOW.height, area.height - 40);
+  const x = area.x + Math.round((area.width - width) / 2);
+  const y = area.y + Math.round((area.height - height) / 2);
+  return [`--window-size=${width},${height}`, `--window-position=${x},${y}`];
+}
+
 // Opens the page in its own window and calls onClose when that window is closed. A private
 // browser profile makes the window its own process, so closing it ends that process.
 function openWindow(url, onClose) {
@@ -250,7 +280,7 @@ function openWindow(url, onClose) {
   if (!exe) { openDefaultBrowser(url); return null; }
   const profile = fs.mkdtempSync(path.join(os.tmpdir(), 'saias-setup-'));
   const proc = spawn(exe, [
-    `--app=${url}`, `--user-data-dir=${profile}`, '--window-size=1000,860',
+    `--app=${url}`, `--user-data-dir=${profile}`, ...windowBounds(),
     '--no-first-run', '--no-default-browser-check', '--disable-sync', '--disable-features=Translate,msEdgeSidebarV2',
   ], { stdio: 'ignore' });
   proc.on('error', () => openDefaultBrowser(url));
@@ -433,4 +463,4 @@ async function run(opts) {
   if (finished) ui.ok('SAIAS is installed.');
 }
 
-module.exports = { run, plan };
+module.exports = { run, plan, windowBounds };

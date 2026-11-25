@@ -184,13 +184,17 @@ async function finish(opts) {
     const ids = opts.tools || tools.ALL.filter(t => t.detect() && !(opts.noHermes && t.id === 'hermes')).map(t => t.id);
     if (ids.length) await tools.connect(ids, { yes: opts.yes });
   }
+  // The native app first: the shortcut opens it when it is there.
+  if (!opts.noApp) await require('./app').ensure();
   if (!opts.noPath) await require('./integrations/path').add({ yes: opts.yes });
   if (!opts.noShortcut) require('./integrations/shortcut').create();
   if (!opts.noBench && (await ui.confirm('Measure how fast each model runs on this PC now? It loads each model in turn (a few minutes).', true, opts.yes))) {
     await require('./bench').run({});
   }
   ui.step('Done');
-  ui.info('Start SAIAS: Start-SAIAS.cmd, the SAIAS desktop shortcut, or "saias start --open".');
+  ui.info(require('./app').exe()
+    ? 'Open SAIAS from the desktop shortcut. Start-SAIAS.cmd or "saias start --open" opens Llama Chat directly.'
+    : 'Start SAIAS: Start-SAIAS.cmd, the SAIAS desktop shortcut, or "saias start --open".');
   ui.info('Llama Chat: http://127.0.0.1:8090/   API for Hermes and other tools: http://127.0.0.1:8090/v1');
 }
 
@@ -338,6 +342,64 @@ async function adopt(folder, opts) {
   ui.info(count ? `Adopted ${count} item(s). Run "saias install" to finish the setup.` : 'Nothing to adopt.');
 }
 
+// ---------------------------------------------------------------- move
+
+function bytesIn(p) {
+  const st = fs.statSync(p);
+  if (!st.isDirectory()) return st.size;
+  return fs.readdirSync(p).reduce((s, n) => s + bytesIn(path.join(p, n)), 0);
+}
+
+// Moves the data folder (models, runtimes, state, logs) to another folder, for example on another
+// drive, and points SAIAS at it. The private Node.js copy and data-folder.txt stay in the standard
+// folder; adopted files outside the data folder stay where they are.
+async function move(target) {
+  if (!target) throw new Error('Usage: saias move <folder>   (for example: saias move D:\\SAIAS)');
+  if (process.env.SAIAS_HOME) throw new Error('SAIAS_HOME is set: change it instead.');
+  const from = paths.home;
+  const to = path.resolve(target);
+  const lower = p => p.toLowerCase();
+  if (lower(to) === lower(from)) { ui.ok(`SAIAS already uses ${to}`); return; }
+  if (lower(to).startsWith(lower(from) + path.sep) || lower(from).startsWith(lower(to) + path.sep)) {
+    throw new Error('The new folder cannot contain, or be inside, the current one.');
+  }
+  if (await hubRunning()) throw new Error('SAIAS is running: stop it first with "saias stop".');
+
+  const stay = lower(from) === lower(paths.standard) ? new Set(['data-folder.txt', 'node']) : new Set();
+  const names = fs.existsSync(from) ? fs.readdirSync(from).filter(n => !stay.has(n.toLowerCase())) : [];
+  fs.mkdirSync(to, { recursive: true });
+  const clash = names.filter(n => fs.existsSync(path.join(to, n)));
+  if (clash.length) throw new Error(`${to} already has ${clash.join(', ')}: choose an empty folder.`);
+  const need = names.reduce((s, n) => s + bytesIn(path.join(from, n)), 0);
+  // Within one drive the files are renamed; to another drive they are copied, which needs room.
+  const free = hardware.freeBytes(to);
+  const otherDrive = lower(path.parse(from).root) !== lower(path.parse(to).root);
+  if (otherDrive && free !== null && free < need + 256e6) throw new Error(`Not enough space in ${to}: ${ui.size(free)} free, ${ui.size(need)} to move.`);
+
+  const state = store.load();
+  ui.step(`Moving ${ui.size(need)} from ${from} to ${to}`);
+  for (const name of names) {
+    const src = path.join(from, name);
+    const dst = path.join(to, name);
+    try {
+      fs.renameSync(src, dst);
+    } catch (e) {
+      if (e.code !== 'EXDEV') throw e;
+      fs.cpSync(src, dst, { recursive: true });
+      fs.rmSync(src, { recursive: true, force: true });
+    }
+    ui.ok(name);
+  }
+
+  // state.json records absolute paths: rebase the ones inside the old folder.
+  const rebase = p => (p && lower(p).startsWith(lower(from) + path.sep) ? path.join(to, p.slice(from.length + 1)) : p);
+  for (const f of Object.values(state.files)) f.path = rebase(f.path);
+  for (const r of Object.values(state.runtimes)) r.dir = rebase(r.dir);
+  paths.setHome(to);
+  store.save(state);
+  ui.ok(`SAIAS now uses ${to}. Restart SAIAS if it was open.`);
+}
+
 // ---------------------------------------------------------------- status and clean
 
 async function status(opts) {
@@ -411,4 +473,4 @@ async function clean(opts) {
   ui.ok('Done.');
 }
 
-module.exports = { install, finish, update, rollback, adopt, status, clean, profileName, currentCatalog, missingBytes };
+module.exports = { install, finish, move, update, rollback, adopt, status, clean, profileName, currentCatalog, missingBytes };

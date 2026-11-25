@@ -1,0 +1,62 @@
+# Builds the native SAIAS app (SAIAS.exe and pdfium.dll) and publishes it on the "app" release.
+# "saias setup" downloads SAIAS-win-x64.zip from there when the SAIAS folder has no SAIAS.exe
+# (a source checkout); app.json carries its size, sha256 and the commit it was built from.
+name: SAIAS app
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'SAIAS-LLM/**'
+      - '.github/workflows/app.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: app-release
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build
+        run: |
+          cmake -S SAIAS-LLM -B build -A x64
+          cmake --build build --config Release
+
+      - name: Package
+        shell: pwsh
+        run: |
+          $out = 'build\Release'
+          New-Item -ItemType Directory pkg | Out-Null
+          Copy-Item "$out\SAIAS.exe", "$out\pdfium.dll" pkg
+          if (Test-Path "$out\PDFium-licenses") { Copy-Item "$out\PDFium-licenses" pkg -Recurse }
+          Compress-Archive -Path pkg\* -DestinationPath SAIAS-win-x64.zip
+          $zip = Get-Item SAIAS-win-x64.zip
+          [ordered]@{
+            commit = $env:GITHUB_SHA
+            built  = (Get-Date).ToUniversalTime().ToString('o')
+            file   = $zip.Name
+            size   = $zip.Length
+            sha256 = (Get-FileHash $zip -Algorithm SHA256).Hash.ToLower()
+          } | ConvertTo-Json | Set-Content app.json -Encoding utf8NoBOM
+          Get-Content app.json
+
+      - name: Publish
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $notes = "Native SAIAS app for Windows x64, built from $env:GITHUB_SHA. The SAIAS setup downloads it automatically."
+          gh release view app *> $null
+          if ($LASTEXITCODE -ne 0) {
+            gh release create app --title 'SAIAS app (latest build)' --notes $notes --prerelease --target $env:GITHUB_SHA
+          } else {
+            gh release edit app --notes $notes
+          }
+          gh release upload app SAIAS-win-x64.zip app.json --clobber

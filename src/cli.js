@@ -21,6 +21,8 @@ Setup
   update             Install newer models from the latest catalog (--check, --yes)
   rollback           Return to the models installed before the last update
   adopt <folder>     Reuse runtimes and model files already on disk (--move, --verify)
+  move <folder>      Move the models and the rest of the data folder, for example to another drive
+  app                Download or update the native SAIAS app for Windows (--open starts it)
   clean              Delete files no profile uses any more (--yes)
 
 Run
@@ -85,6 +87,12 @@ async function main() {
     case 'update': return manage.update(opts);
     case 'rollback': return manage.rollback();
     case 'adopt': return manage.adopt(opts._[0], opts);
+    case 'move': return manage.move(opts._[0]);
+    case 'app': {
+      const exe = await require('./app').ensure();
+      if (exe && opts.open) require('node:child_process').spawn(exe, [], { detached: true, stdio: 'ignore' }).unref();
+      return;
+    }
     case 'status': return manage.status(opts);
     case 'recommend': return require('./recommend').run(opts);
     case 'clean': return manage.clean(opts);

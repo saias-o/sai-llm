@@ -1,35 +1,31 @@
 'use strict';
 
-// Desktop shortcut to Start-SAIAS.cmd (Windows only).
+// Desktop shortcut (Windows only): the SAIAS app when there is one (shipped by the installer or
+// downloaded by app.js), else Start-SAIAS.cmd, which opens Llama Chat.
 
-const fs = require('node:fs');
 const path = require('node:path');
 const { execFileSync } = require('node:child_process');
 const paths = require('../paths');
 const ui = require('../ui');
-
-// The installed app carries the icon; a source checkout has the .ico file.
-function icon() {
-  const exe = path.join(paths.ROOT, 'SAIAS.exe');
-  return fs.existsSync(exe) ? exe : path.join(paths.ROOT, 'SAIAS-LLM', 'saias-llm.ico');
-}
+const app = require('../app');
 
 function create() {
   if (process.platform !== 'win32') return;
   ui.step('Shortcut');
+  const exe = app.exe();
   const q = s => `'${s.replace(/'/g, "''")}'`;
   const script = [
     '$d = [Environment]::GetFolderPath("Desktop")',
     '$s = (New-Object -ComObject WScript.Shell).CreateShortcut((Join-Path $d "SAIAS.lnk"))',
-    `$s.TargetPath = ${q(fs.existsSync(path.join(paths.ROOT, 'SAIAS.exe')) ? path.join(paths.ROOT, 'SAIAS.exe') : path.join(paths.ROOT, 'Start-SAIAS.cmd'))}`,
-    `$s.WorkingDirectory = ${q(paths.ROOT)}`,
-    `$s.IconLocation = ${q(icon())}`,
-    '$s.Description = "Start SAIAS (local models, web search, Llama Chat)"',
+    `$s.TargetPath = ${q(exe || path.join(paths.ROOT, 'Start-SAIAS.cmd'))}`,
+    `$s.WorkingDirectory = ${q(exe ? path.dirname(exe) : paths.ROOT)}`,
+    `$s.IconLocation = ${q(exe || path.join(paths.ROOT, 'SAIAS-LLM', 'saias-llm.ico'))}`,
+    `$s.Description = ${q(exe ? 'SAIAS: models, advisor and chat' : 'Start SAIAS (local models, web search, Llama Chat)')}`,
     '$s.Save()',
   ].join('; ');
   try {
     execFileSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', script], { stdio: 'ignore', windowsHide: true });
-    ui.ok('SAIAS shortcut created on the desktop');
+    ui.ok(exe ? 'SAIAS shortcut created on the desktop (opens the SAIAS app)' : 'SAIAS shortcut created on the desktop (opens Llama Chat)');
   } catch (e) {
     ui.bad(`Could not create the desktop shortcut: ${e.message}`);
   }
