@@ -195,7 +195,7 @@ async function finish(opts) {
   }
   ui.step('Done');
   ui.info(require('./app').exe()
-    ? 'Open SAIAS from the desktop shortcut. Start-SAIAS.cmd or "saias start --open" opens Llama Chat directly.'
+    ? 'Open SAIAS from the desktop shortcut. Start-SAIAS.cmd or "saias start --open" opens the chat in your browser.'
     : 'Start SAIAS: Start-SAIAS.cmd, the SAIAS desktop shortcut, or "saias start --open".');
   ui.info('Llama Chat: http://127.0.0.1:8090/   API for Hermes and other tools: http://127.0.0.1:8090/v1');
 }

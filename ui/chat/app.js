@@ -7,6 +7,7 @@ const TOOL_RESULT_LIMIT = 24000;
 const API = '/saias/chat/api';
 const IMAGE_MODEL = 'saias-image';
 const IMAGE_TOOL = 'generate_image';
+const NO_TEXT_MODEL = 'Install a text model with "saias install --profiles flash", then restart SAIAS.';
 const IMAGE_DEFINITION = { type: 'function', function: {
   name: IMAGE_TOOL,
   description: 'Create a new image from text using saias-image. Use only when the user asks for an image. Write a descriptive English prompt with the desired subject, composition and style.',
@@ -149,7 +150,7 @@ async function loadList() {
 }
 
 function blankConversation() {
-  const model = modelInfo(state.lastModel) ? state.lastModel : (state.models[0]?.id || (state.image.ready ? IMAGE_MODEL : 'saias-flash'));
+  const model = modelInfo(state.lastModel) ? state.lastModel : (state.models[0]?.id || 'saias-flash');
   return { id: newId(), data: { model, reasoning: 'default', context_tokens: 0, messages: [] }, saved: false };
 }
 
@@ -370,11 +371,11 @@ function toolEnabled(name) {
 function renderTopbar() {
   const data = state.current.data;
   const model = modelInfo(data.model);
-  $('model-picker').hidden = imageOnly();
-  $('tools-picker').hidden = imageOnly();
-  $('reasoning-picker').hidden = imageOnly();
-  $('gauge').hidden = imageOnly();
-  $('model-name').textContent = data.model;
+  $('model-button').disabled = !state.models.length;
+  $('tools-picker').hidden = !model;
+  $('reasoning-picker').hidden = !model;
+  $('gauge').hidden = !model;
+  $('model-name').textContent = model?.id || 'No text model';
   const def = model?.saias?.reasoning?.default;
   $('reasoning-name').textContent = data.reasoning === 'default'
     ? `Reasoning: ${LEVEL_LABELS[def] || 'default'}` : `Reasoning: ${LEVEL_LABELS[data.reasoning] || data.reasoning}`;
@@ -456,10 +457,10 @@ function renderThread() {
 function emptyState() {
   const wrap = el('div', 'empty');
   const h = el('h1');
-  h.textContent = imageOnly() ? 'What would you like to create?' : 'What can I help with?';
+  h.textContent = 'What can I help with?';
   const p = el('p');
   const model = modelInfo(state.current.data.model);
-  p.textContent = `${state.current.data.model}${model?.saias?.model ? ` · ${model.saias.model}` : ''} · private, on this PC`;
+  p.textContent = model ? `${model.id}${model.saias?.model ? ` · ${model.saias.model}` : ''} · private, on this PC` : NO_TEXT_MODEL;
   const grid = el('div', 'suggestions');
   for (const [title, rest] of SUGGESTIONS) {
     const b = el('button', 'suggestion');
@@ -476,7 +477,7 @@ function emptyState() {
     grid.append(b);
   }
   wrap.append(h, p);
-  if (!imageOnly()) wrap.append(grid);
+  if (model) wrap.append(grid);
   return wrap;
 }
 
@@ -927,14 +928,17 @@ async function send() {
   const input = $('input');
   const text = input.value.trim();
   if (!text && !state.attachments.length) return;
-  const imageRequest = state.imageMode || imageOnly();
+  const imageRequest = state.imageMode;
   if (imageRequest && (!text || state.attachments.length || text.length > 2000)) {
     setStatus('Enter a prompt of 1–2,000 characters and remove any attachments.', true);
     return;
   }
   const data = state.current.data;
   const model = modelInfo(data.model);
-  if (!imageRequest && !model) { setStatus('This model is not installed. Choose another one.', true); return; }
+  if (!imageRequest && !model) {
+    setStatus(state.models.length ? 'This model is not installed. Choose another one.' : NO_TEXT_MODEL, true);
+    return;
+  }
   if (state.attachments.some(a => a.image_url) && !model.saias?.vision) {
     setStatus(`${data.model} cannot see images. Remove them or choose a model with image support.`, true);
     return;
@@ -967,18 +971,15 @@ function updateSend() {
   const busy = Boolean(state.busy);
   const imageButton = $('image-button');
   imageButton.hidden = !state.image.supported;
-  const activeImageMode = state.imageMode || imageOnly();
-  imageButton.disabled = busy || imageOnly();
-  imageButton.classList.toggle('on', activeImageMode);
-  imageButton.setAttribute('aria-pressed', String(activeImageMode));
-  $('input').placeholder = activeImageMode ? 'Describe the image to create' : 'Message SAIAS';
+  imageButton.disabled = busy;
+  imageButton.classList.toggle('on', state.imageMode);
+  imageButton.setAttribute('aria-pressed', String(state.imageMode));
+  $('input').placeholder = state.imageMode ? 'Describe the image to create' : 'Message SAIAS';
   button.classList.toggle('stop', busy);
   button.title = busy ? 'Stop' : 'Send (Enter)';
   button.setAttribute('aria-label', busy ? 'Stop' : 'Send');
   button.disabled = !busy && !$('input').value.trim() && !state.attachments.length;
 }
-
-function imageOnly() { return state.image.ready && !state.models.length; }
 
 // ---------------------------------------------------------------- attachments
 

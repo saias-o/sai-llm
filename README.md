@@ -23,7 +23,7 @@ This repository, saias-llm, contains the installer, the model catalog, the SAIAS
 
 1. Clone this repository, or download it as a ZIP and extract it.
 2. Run `Install-SAIAS.cmd`. It installs a private copy of Node.js if needed and opens the **setup window**. The advisor reads your hardware and preselects only the profiles this PC can run (on a laptop with 8 GB of RAM and no large NVIDIA GPU: `saias-flash` and `saias-smart`), so nothing it cannot use is downloaded. If the data folder's drive is too small, it suggests another drive. After you accept the licenses, the setup downloads and verifies the runtimes and models, sets up web search, and connects Hermes Agent and the coding tools it finds (OpenCode, Codex, Claude Code). It can also put `saias` on your PATH and create a **SAIAS** desktop shortcut. It downloads the SAIAS app (built by GitHub Actions on the `app` release), adds SAIAS to the Start menu and lists it in **Settings > Apps > Installed apps**. Running it again is safe: verified files are kept and interrupted downloads resume. `Install-SAIAS.cmd --console` runs the same installer in the terminal.
-3. Open **SAIAS** from the desktop or the Start menu. Its **Chat** view is SAIAS Chat: conversations, web tools, reasoning, a context gauge and attachments, also available in a browser at http://127.0.0.1:8090/saias/chat/. `Start-SAIAS.cmd` opens [Llama Chat](http://127.0.0.1:8090/) instead. Hermes and the coding tools use the same server at `http://127.0.0.1:8090`.
+3. Open **SAIAS** from the desktop or the Start menu. Its **Chat** view is SAIAS Chat: conversations, web tools, reasoning, a context gauge and attachments, also available in a browser at http://127.0.0.1:8090/saias/chat/. `Start-SAIAS.cmd` opens SAIAS Chat when `saias-image` is installed, otherwise it opens [Llama Chat](http://127.0.0.1:8090/). Hermes and the coding tools use the same server at `http://127.0.0.1:8090`.
 
 **Uninstall.** In **Settings > Apps > Installed apps**, choose SAIAS > Uninstall, or run `Uninstall-SAIAS.cmd`. The uninstall window lists what it removes: the models, runtimes and logs, the conversations (unless you keep them), the app, the shortcuts, the PATH entry and the SAIAS settings in Hermes, Codex and OpenCode (a `.bak-saias-*` copy of each file is kept). The program folder stays, since it holds the code.
 
@@ -63,7 +63,7 @@ SAIAS builds on the same llama.cpp engine. Ollama, LM Studio and Jan are better 
 | `saias setup` | Opens the setup window (an Edge or Chrome app window, else the default browser). `--console` runs `saias install` instead. |
 | `saias install` | Detects the hardware, installs the recommended profiles and connects your tools. Options: `--profiles flash,smart,pro`, `--yes`, `--check`, `--no-tools`, `--no-path`, `--no-shortcut`. |
 | `saias connect [tool...]` | Points `hermes`, `opencode`, `codex` or `claude` at SAIAS; without names, every detected tool. |
-| `saias start` | Starts the hub. `--open` opens Llama Chat. |
+| `saias start` | Starts the hub. `--open` opens SAIAS Chat when the image generator is installed, otherwise Llama Chat. |
 | `saias stop` | Stops the hub and its model servers. |
 | `saias claude` | Runs Claude Code on a SAIAS model (`--profile smart`; other options go to Claude Code). |
 | `saias update` | Fetches the latest catalog and installs the newer models it selects for this PC. `--check` only reports. |
@@ -114,7 +114,7 @@ On Windows x64, run `saias install-image` or pass a storage folder with `saias i
 
 In SAIAS Chat, choose **Create image**, enter a prompt, and send it. The chat model can also use **Create image** from its Tools menu when you ask for an image. Prompts stay on the PC. `saias-image` generates 512 × 512 PNGs, with a CPU fallback when Vulkan is unavailable. The generated images stay with the conversation and can be downloaded from the chat.
 
-If you install only `saias-image`, `saias start --open` opens SAIAS Chat in image mode.
+`saias start --open` opens SAIAS Chat when `saias-image` is installed. Text chat is the default. If a text profile is missing, SAIAS Chat shows how to install one and **Create image** remains available.
 
 ## Web search
 

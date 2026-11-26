@@ -399,9 +399,10 @@ async function start({ open = false } = {}) {
     throw new Error('SAIAS_HUB_HOST opens SAIAS to the network: set SAIAS_API_KEY as well.');
   }
   const url = `http://${BIND === '0.0.0.0' || BIND === '::' ? HOST : BIND}:${PORT}/`;
+  const browserUrl = image.status().ready ? `${url}saias/chat/` : url;
   if (await alreadyRunning()) {
     log(`SAIAS is already running at ${url}`);
-    if (open) openBrowser(url);
+    if (open) openBrowser(browserUrl);
     return;
   }
   const { uiExe } = loadProfiles();
@@ -419,7 +420,7 @@ async function start({ open = false } = {}) {
   server.listen(PORT, BIND, () => {
     log(`SAIAS hub ready - ${url}  (${ui ? [...profiles.keys()].join(', ') : 'saias-image'})`);
     if (ui) log(`OpenAI-compatible endpoint: ${url}v1. Press Ctrl+C to stop SAIAS and its models.`);
-    if (open) openBrowser(url);
+    if (open) openBrowser(browserUrl);
   });
 }
 
