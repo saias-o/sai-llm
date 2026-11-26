@@ -15,13 +15,16 @@ function installedModels() {
   if (!catalog) return [];
   const models = [];
   for (const [id, entry] of Object.entries(state.profiles)) {
-    const variant = catalog.profiles[id]?.variants.find(v => v.id === entry.variant);
+    const variant = catalogs.installedVariant(catalog, id, entry);
     if (!variant) continue;
     const model = catalog.models[variant.model];
     const levels = Object.keys(variant.reasoning?.levels || {});
     models.push({
       id: 'saias-' + id,
       profile: id,
+      variant: variant.id,
+      modelVersion: catalogs.modelVersion(entry),
+      pinned: Boolean(entry.pinned),
       name: model.name,
       context: variant.server['ctx-size'] || model.context,
       vision: Boolean(model.vision),

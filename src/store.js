@@ -23,11 +23,48 @@ function load() {
   }
 }
 
-function save(state) {
-  fs.mkdirSync(paths.home, { recursive: true });
-  const tmp = paths.state + '.tmp';
-  fs.writeFileSync(tmp, JSON.stringify(state, null, 2) + '\n');
-  fs.renameSync(tmp, paths.state);
+function writeJson(file, value) {
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  const tmp = `${file}.${process.pid}.tmp`;
+  fs.writeFileSync(tmp, JSON.stringify(value, null, 2) + '\n');
+  fs.renameSync(tmp, file);
+}
+
+function save(state) { writeJson(paths.state, state); }
+
+// Serialize catalog and state changes across the CLI and the graphical setup.
+async function withLock(operation) {
+  const root = process.env.SAIAS_HOME ? paths.home : paths.standard;
+  const file = path.join(root, 'installation.lock');
+  fs.mkdirSync(root, { recursive: true });
+  let fd;
+  try { fd = fs.openSync(file, 'wx'); }
+  catch (error) {
+    if (error.code !== 'EEXIST') throw error;
+    let owner;
+    try { owner = fs.readFileSync(file, 'utf8'); } catch (e) { if (e.code !== 'ENOENT') throw e; }
+    const pid = Number(owner);
+    let abandoned = owner === undefined;
+    if (Number.isSafeInteger(pid) && pid > 0) {
+      try { process.kill(pid, 0); } catch (e) { abandoned = e.code === 'ESRCH'; }
+    } else if (owner !== undefined) {
+      try { abandoned = Date.now() - fs.statSync(file).mtimeMs > 60_000; }
+      catch (e) { if (e.code !== 'ENOENT') throw e; abandoned = true; }
+    }
+    if (abandoned) {
+      try { if (owner !== undefined && fs.readFileSync(file, 'utf8') === owner) fs.unlinkSync(file); }
+      catch (e) { if (e.code !== 'ENOENT') throw e; }
+      try { fd = fs.openSync(file, 'wx'); } catch (e) { if (e.code !== 'EEXIST') throw e; }
+    }
+    if (fd === undefined) throw new Error('Another SAIAS installation operation is in progress. Try again when it finishes.');
+  }
+  try {
+    fs.writeFileSync(fd, `${process.pid}\n`);
+    return await operation();
+  } finally {
+    fs.closeSync(fd);
+    fs.rmSync(file, { force: true });
+  }
 }
 
 function sizeOf(file) {
@@ -38,10 +75,16 @@ function sizeOf(file) {
 function filePath(state, spec) {
   const known = state.files[spec.sha256];
   if (known && sizeOf(known.path) === spec.size) return known.path;
+  const versioned = downloadPath(spec);
+  if (sizeOf(versioned) === spec.size) return versioned;
   const standard = path.join(paths.models, spec.name);
-  if (sizeOf(standard) === spec.size) return standard;
+  if (sizeOf(standard) === spec.size && !Object.entries(state.files).some(([sha, file]) =>
+    sha !== spec.sha256 && typeof file.path === 'string'
+    && (process.platform === 'win32' ? path.resolve(file.path).toLowerCase() === standard.toLowerCase() : path.resolve(file.path) === standard))) return standard;
   return null;
 }
+
+function downloadPath(spec) { return path.join(paths.models, spec.sha256, spec.name); }
 
 function recordFile(state, spec, file, { verified, adopted = false }) {
   state.files[spec.sha256] = { name: spec.name, path: file, size: spec.size, verified, adopted };
@@ -61,4 +104,4 @@ function recordRuntime(state, id, dir, { adopted = false } = {}) {
   state.runtimes[id] = { dir, adopted };
 }
 
-module.exports = { load, save, filePath, recordFile, runtimeDir, recordRuntime, binaryPath, sizeOf };
+module.exports = { load, save, writeJson, withLock, filePath, downloadPath, recordFile, runtimeDir, recordRuntime, binaryPath, sizeOf };

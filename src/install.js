@@ -11,7 +11,8 @@ const llama = require('./llama');
 const store = require('./store');
 const ui = require('./ui');
 const { downloadFile, extractArchives, hashFile } = require('./download');
-const { resolveProfile, resolveAll, recommended, filesFor } = require('./resolve');
+const { resolveProfile, resolveSelection, resolveAll, recommended, filesFor } = require('./resolve');
+const { modelVersion, installedVariant, modelVersions, variantsFor } = catalogs;
 const { hubRunning } = require('./installed');
 
 // A getter: the setup can move the data folder after this module is loaded.
@@ -65,12 +66,12 @@ async function ensureRuntime(state, id, runtime) {
 
 async function ensureFile(state, spec) {
   const existing = store.filePath(state, spec);
-  if (existing) {
-    if (!state.files[spec.sha256]) store.recordFile(state, spec, existing, { verified: false });
+  if (existing && (state.files[spec.sha256]?.path === existing || await hashFile(existing) === spec.sha256)) {
+    if (!state.files[spec.sha256]) store.recordFile(state, spec, existing, { verified: true });
     ui.ok(spec.name);
     return existing;
   }
-  const dest = path.join(paths.models, spec.name);
+  const dest = store.downloadPath(spec);
   await downloadFile(spec, dest);
   store.recordFile(state, spec, dest, { verified: true });
   store.save(state);
@@ -79,11 +80,11 @@ async function ensureFile(state, spec) {
 }
 
 // Downloads what a resolved profile needs and returns its installed state entry.
-async function installResolution(state, r) {
+async function installResolution(state, r, pinned = false) {
   const { runtime, models } = filesFor(r);
   const dir = await ensureRuntime(state, runtime.id, runtime);
   for (const f of models) await ensureFile(state, f);
-  const entry = { variant: r.variant.id };
+  const entry = { variant: r.variant.id, modelVersion: r.modelVersion, ...(pinned ? { pinned: true } : {}) };
   if (r.variant.device === 'auto') {
     const devices = llama.listDevices(store.binaryPath(dir, runtime));
     entry.device = llama.pickDevice(devices);
@@ -114,13 +115,14 @@ function parseProfiles(value, catalog) {
 
 async function install(opts) {
   const catalog = currentCatalog();
+  catalogs.verifyHistory(catalogs.installed(), catalog);
   const state = store.load();
   const hw = hardware.detect();
   printHardware(hw);
 
   ui.step(`Profiles (catalog ${catalog.version})`);
-  const resolutions = resolveAll(catalog, hw);
-  const rec = recommended(catalog, hw);
+  const resolutions = resolveAll(catalog, hw, state.profiles);
+  const rec = recommended(catalog, hw, state.profiles);
   for (const r of resolutions) {
     const name = profileName(r.profile).padEnd(12);
     if (r.error) { ui.info(`${name} not available: ${r.error}`); continue; }
@@ -136,7 +138,7 @@ async function install(opts) {
   for (const [id, p] of Object.entries(catalog.profiles)) if (p.always && !chosen.includes(id)) chosen.unshift(id);
   const plan = [];
   for (const id of chosen) {
-    const r = resolveProfile(catalog, id, hw);
+    const r = resolveSelection(catalog, id, hw, state.profiles[id]);
     if (r.error) ui.bad(`Skipping ${profileName(id)}: ${r.error}`);
     else plan.push(r);
   }
@@ -165,7 +167,7 @@ async function install(opts) {
 
   ui.step('Runtimes and models');
   const selection = {};
-  for (const r of plan) selection[r.profile] = await installResolution(state, r);
+  for (const r of plan) selection[r.profile] = await installResolution(state, r, state.profiles[r.profile]?.pinned);
 
   if (!sameSelection(state.profiles, selection)) snapshotPrevious(state);
   state.profiles = selection;
@@ -211,22 +213,32 @@ async function checkUpdate() {
   let latest;
   let fetchError = null;
   try {
-    latest = await catalogs.remote();
+    latest = catalogs.newest(await catalogs.remote(), catalogs.bundled());
   } catch (e) {
     fetchError = `${e.message}. Using the catalog shipped with this copy of SAIAS.`;
     latest = catalogs.bundled();
   }
-  const result = { installed: current.version, latest: latest.version, available: false, changes: [], skipped: [], downloadBytes: 0, error: fetchError };
-  if (catalogs.compareVersions(latest.version, current.version) <= 0) return { result, state, current, latest, plan: [] };
+  const result = { installed: state.catalogVersion || current.version, latest: latest.version, available: false, changes: [], skipped: [], downloadBytes: 0, error: fetchError };
+  if (catalogs.compareVersions(latest.version, result.installed) <= 0) return { result, state, current, latest, plan: [] };
+  catalogs.verifyHistory(current, latest);
   const hw = hardware.detect();
   const plan = [];
-  for (const id of Object.keys(state.profiles)) {
-    const r = resolveProfile(latest, id, hw);
-    if (r.error) { result.skipped.push(`${profileName(id)}: ${r.error} in the new catalog; keeping the current version.`); continue; }
+  for (const [id, entry] of Object.entries(state.profiles)) {
+    const r = resolveSelection(latest, id, hw, entry);
+    if (r.error) {
+      if (!installedVariant(latest, id, entry)) throw new Error(`The new catalog cannot preserve ${profileName(id)} ${modelVersion(entry)}: ${r.error}.`);
+      result.skipped.push(`${profileName(id)}: ${r.error} in the new catalog; keeping ${modelVersion(entry)}.`);
+      continue;
+    }
+    if (!entry.pinned && r.modelVersion !== modelVersion(latest.profiles[id])) {
+      result.skipped.push(`${profileName(id)}: ${modelVersion(latest.profiles[id])} is incompatible with this PC; using ${r.modelVersion}.`);
+    }
     plan.push(r);
-    const before = current.profiles[id]?.variants.find(v => v.id === state.profiles[id].variant);
-    if (!before || before.model !== r.variant.model || before.runtime !== r.variant.runtime || JSON.stringify(before.server) !== JSON.stringify(r.variant.server)) {
-      result.changes.push({ profile: profileName(id), from: before ? current.models[before.model].name : null, to: r.model.name });
+    const before = installedVariant(current, id, entry);
+    if (!before || modelVersion(entry) !== r.modelVersion || before.id !== r.variant.id || before.model !== r.variant.model
+      || before.runtime !== r.variant.runtime || JSON.stringify(before.server) !== JSON.stringify(r.variant.server)) {
+      result.changes.push({ profile: profileName(id), from: before ? current.models[before.model].name : null, to: r.model.name,
+        fromVersion: before ? modelVersion(entry) : null, toVersion: r.modelVersion });
     }
   }
   result.available = true;
@@ -244,7 +256,7 @@ async function update(opts) {
   for (const line of result.skipped) ui.bad(line);
   ui.step('Changes');
   if (!result.changes.length) ui.info('No profile changes; only catalog metadata changed.');
-  for (const c of result.changes) ui.info(`${c.profile}: ${c.from || 'new'} -> ${c.to}`);
+  for (const c of result.changes) ui.info(`${c.profile}: ${c.from ? `${c.fromVersion} ${c.from}` : 'new'} -> ${c.toVersion} ${c.to}`);
   if (result.downloadBytes) ui.info(`Download: ${ui.size(result.downloadBytes)}`);
   if (opts.check) return;
   if (!(await ui.confirm('Apply this update?', true, opts.yes))) return;
@@ -255,7 +267,7 @@ async function update(opts) {
 
   ui.step('Downloads');
   const selection = { ...state.profiles };
-  for (const r of plan) selection[r.profile] = await installResolution(state, r);
+  for (const r of plan) selection[r.profile] = await installResolution(state, r, state.profiles[r.profile]?.pinned);
   snapshotPrevious(state);
   state.profiles = selection;
   state.catalogVersion = latest.version;
@@ -276,6 +288,78 @@ function rollback() {
   state.previous = current;
   store.save(state);
   ui.ok(`Returned to catalog ${state.catalogVersion}. Restart SAIAS to apply it. Run "saias rollback" again to undo.`);
+}
+
+// ---------------------------------------------------------------- model versions
+
+function requestedProfile(name) { return String(name || '').toLowerCase().replace(/^saias-/, ''); }
+
+function requestedVersion(value) {
+  if (/^latest$/i.test(value)) return null;
+  if (catalogs.MODEL_VERSION.test(value)) return value;
+  throw new Error('Choose a numbered version, for example 1.0, or latest.');
+}
+
+function versions(name, opts) {
+  const catalog = catalogs.installed() || catalogs.bundled();
+  const state = store.load();
+  const id = requestedProfile(name);
+  if (id && id !== 'image' && !Object.hasOwn(catalog.profiles, id)) throw new Error(`Unknown profile: ${name}`);
+  const rows = [];
+  if (id !== 'image') {
+    const hw = hardware.detect();
+    for (const key of id ? [id] : Object.keys(catalog.profiles)) {
+      const profile = catalog.profiles[key];
+      const entry = state.profiles[key];
+      for (const version of modelVersions(profile)) {
+        const r = resolveProfile(catalog, key, hw, version);
+        const names = new Set(variantsFor(profile, version).map(v => catalog.models[v.model].name));
+        const active = Boolean(entry && modelVersion(entry) === version);
+        const installed = active ? installedVariant(catalog, key, entry) : null;
+        rows.push({ profile: profileName(key), version, model: installed ? catalog.models[installed.model].name : r.model?.name || [...names].join(' / '), active,
+          pinned: active && Boolean(entry.pinned), latest: version === modelVersion(profile), available: !r.error, error: r.error });
+      }
+    }
+  }
+  if (!id || id === 'image') rows.push(...require('./image').versions());
+  if (opts.json) { console.log(JSON.stringify(rows, null, 2)); return; }
+  for (const row of rows) {
+    ui.info(`${row.profile} ${row.version}  ${row.model}${row.active ? row.pinned ? ' (pinned)' : ' (active)' : ''}${row.latest ? ' (latest)' : ''}${row.error ? ` — ${row.error}` : ''}`);
+  }
+}
+
+async function use(name, value, opts) {
+  if (!name || !value) throw new Error('Usage: saias use <profile> <1.0|latest> [--check] [--yes]');
+  const id = requestedProfile(name);
+  const version = requestedVersion(value);
+  if (id === 'image') return require('./image').use(version, opts);
+  const catalog = catalogs.installed() || catalogs.bundled();
+  if (!Object.hasOwn(catalog.profiles, id)) throw new Error(`Unknown profile: ${name}`);
+  const state = store.load();
+  if (!Object.keys(state.profiles).length) throw new Error('Install SAIAS text profiles first with "saias install".');
+  const entry = state.profiles[id];
+  const hw = hardware.detect();
+  const r = version === null ? resolveSelection(catalog, id, hw) : resolveProfile(catalog, id, hw, version);
+  if (r.error) throw new Error(`${profileName(id)}: ${r.error}`);
+  const pinned = version !== null;
+  const same = modelVersion(entry) === r.modelVersion && entry?.variant === r.variant.id;
+  const bytes = missingBytes(state, r);
+  ui.info(`${profileName(id)} ${r.modelVersion} — ${r.model.name}${pinned ? ' (pinned)' : ' (follows compatible updates)'}`);
+  if (bytes) ui.info(`Download: ${ui.size(bytes)}`);
+  if (opts.check) return;
+  if (same && !bytes) {
+    state.profiles[id] = { ...entry, modelVersion: r.modelVersion, ...(pinned ? { pinned: true } : {}) };
+    if (!pinned) delete state.profiles[id].pinned;
+  } else {
+    const free = hardware.freeBytes(paths.home);
+    if (bytes && free !== null && free < bytes * 1.1) throw new Error(`Not enough space in ${paths.home}: ${ui.size(free)} free, ${ui.size(bytes)} needed.`);
+    ui.info(`${r.model.license.name}  ${r.model.license.url}`);
+    if (r.model.license.note) ui.info(r.model.license.note);
+    if (!(await ui.confirm('Accept this model license?', true, opts.yes))) return;
+    state.profiles[id] = await installResolution(state, r, pinned);
+  }
+  store.save(state);
+  ui.ok(`Version preference saved. Restart SAIAS to use ${profileName(id)} ${r.modelVersion}.`);
 }
 
 // ---------------------------------------------------------------- adopt
@@ -300,7 +384,10 @@ async function adopt(folder, opts) {
   const files = new Map();
   const runtimes = [];
   for (const c of known) {
-    for (const m of Object.values(c.models)) for (const f of Object.values(m.files)) files.set(`${f.size}`, f);
+    for (const m of Object.values(c.models)) for (const f of Object.values(m.files)) {
+      if (!files.has(f.size)) files.set(f.size, new Map());
+      files.get(f.size).set(f.sha256, f);
+    }
     for (const [id, r] of Object.entries(c.runtimes)) runtimes.push({ id, ...r });
   }
   const state = store.load();
@@ -310,19 +397,19 @@ async function adopt(folder, opts) {
   for (const { dir, entries } of walk(path.resolve(folder))) {
     for (const e of entries.filter(x => x.isFile())) {
       const full = path.join(dir, e.name);
-      const spec = files.get(String(store.sizeOf(full)));
-      if (!spec || store.filePath(state, spec)) continue;
-      if (opts.verify) {
-        const digest = await hashFile(full);
-        if (digest !== spec.sha256) { ui.bad(`${full}: same size as ${spec.name} but a different sha256, skipped`); continue; }
-      }
+      const candidates = files.get(store.sizeOf(full));
+      if (!candidates || [...candidates.values()].every(spec => state.files[spec.sha256] && store.filePath(state, spec))) continue;
+      const verify = Boolean(opts.verify) || candidates.size > 1;
+      const spec = verify ? candidates.get(await hashFile(full)) : candidates.values().next().value;
+      if (!spec) { ui.bad(`${full}: no matching sha256, skipped`); continue; }
+      if (state.files[spec.sha256] && store.filePath(state, spec)) continue;
       let target = full;
       if (opts.move) {
-        target = path.join(paths.models, spec.name);
-        fs.mkdirSync(paths.models, { recursive: true });
+        target = store.downloadPath(spec);
+        fs.mkdirSync(path.dirname(target), { recursive: true });
         try { fs.renameSync(full, target); } catch { target = full; ui.bad(`${spec.name}: cannot move across drives, kept in place`); }
       }
-      store.recordFile(state, spec, target, { verified: Boolean(opts.verify), adopted: target === full });
+      store.recordFile(state, spec, target, { verified: verify, adopted: target === full });
       ui.ok(`${spec.name} -> ${target}`);
       count++;
     }
@@ -368,7 +455,7 @@ async function move(target) {
   }
   if (await hubRunning()) throw new Error('SAIAS is running: stop it first with "saias stop".');
 
-  const stay = lower(from) === lower(paths.standard) ? new Set(['data-folder.txt', 'node', 'conversations', 'settings.json']) : new Set();
+  const stay = lower(from) === lower(paths.standard) ? new Set(['data-folder.txt', 'image-folder.txt', 'installation.lock', 'node', 'conversations', 'settings.json']) : new Set();
   const names = fs.existsSync(from) ? fs.readdirSync(from).filter(n => !stay.has(n.toLowerCase())) : [];
   fs.mkdirSync(to, { recursive: true });
   const clash = names.filter(n => fs.existsSync(path.join(to, n)));
@@ -398,6 +485,7 @@ async function move(target) {
   const rebase = p => (p && lower(p).startsWith(lower(from) + path.sep) ? path.join(to, p.slice(from.length + 1)) : p);
   for (const f of Object.values(state.files)) f.path = rebase(f.path);
   for (const r of Object.values(state.runtimes)) r.dir = rebase(r.dir);
+  require('./image').rebaseFolder(rebase);
   paths.setHome(to);
   store.save(state);
   ui.ok(`SAIAS now uses ${to}. Restart SAIAS if it was open.`);
@@ -411,7 +499,8 @@ async function status(opts) {
   const hub = await hubRunning();
   if (opts.json) {
     const models = require('./installed').installedModels();
-    console.log(JSON.stringify({ home: paths.home, catalogVersion: state.catalogVersion, profiles: state.profiles, models, benchmarks: state.benchmarks || {}, hub }, null, 2));
+    console.log(JSON.stringify({ home: paths.home, catalogVersion: state.catalogVersion, profiles: state.profiles, models,
+      image: require('./image').status(), benchmarks: state.benchmarks || {}, hub }, null, 2));
     return;
   }
   printHardware(hardware.detect());
@@ -420,16 +509,16 @@ async function status(opts) {
   if (!catalog || !Object.keys(state.profiles).length) { ui.todo('SAIAS is not installed. Run: saias install'); return; }
   ui.info(`Catalog: ${state.catalogVersion}`);
   for (const [id, entry] of Object.entries(state.profiles)) {
-    const variant = catalog.profiles[id]?.variants.find(v => v.id === entry.variant);
+    const variant = installedVariant(catalog, id, entry);
     if (!variant) { ui.bad(`${profileName(id)}: variant ${entry.variant} is missing from the catalog`); continue; }
     const model = catalog.models[variant.model];
     const runtime = catalog.runtimes[variant.runtime];
     const filesOk = Object.values(model.files).every(f => store.filePath(state, f));
     const runtimeOk = store.runtimeDir(state, variant.runtime, runtime);
-    const line = `${profileName(id).padEnd(12)} ${model.name}, ${runtime.name}${entry.device ? `, device ${entry.device}` : ''}`;
+    const line = `${profileName(id).padEnd(12)} ${modelVersion(entry)}${entry.pinned ? ' (pinned)' : ''} ${model.name}, ${runtime.name}${entry.device ? `, device ${entry.device}` : ''}`;
     if (filesOk && runtimeOk) ui.ok(line); else ui.bad(`${line}: files missing, run "saias install"`);
     const b = state.benchmarks?.[id];
-    if (b && b.variant === entry.variant) {
+    if (b && b.variant === entry.variant && modelVersion(b) === modelVersion(entry)) {
       ui.info(`${''.padEnd(17)}${b.genTps} tokens/s generation, ${b.promptTps?.[4096] ?? b.promptTps?.[512] ?? '?'} tokens/s prompt (${b.rating}, measured ${b.date.slice(0, 10)})`);
     } else {
       ui.info(`${''.padEnd(17)}speed not measured yet: run "saias bench"`);
@@ -445,7 +534,7 @@ function referenced(state) {
   const add = (catalog, profiles) => {
     if (!catalog) return;
     for (const [id, entry] of Object.entries(profiles || {})) {
-      const v = catalog.profiles[id]?.variants.find(x => x.id === entry.variant);
+      const v = installedVariant(catalog, id, entry);
       if (!v) continue;
       keep.runtimes.add(v.runtime);
       for (const f of Object.values(catalog.models[v.model].files)) keep.files.add(f.sha256);
@@ -476,4 +565,11 @@ async function clean(opts) {
   ui.ok('Done.');
 }
 
-module.exports = { install, finish, move, update, rollback, adopt, status, clean, profileName, currentCatalog, missingBytes };
+const locked = operation => (...args) => store.withLock(() => operation(...args));
+module.exports = {
+  install: opts => opts.check ? install(opts) : store.withLock(() => install(opts)),
+  update: opts => (opts.check || opts.json) ? update(opts) : store.withLock(() => update(opts)),
+  use: (name, value, opts) => opts.check ? use(name, value, opts) : store.withLock(() => use(name, value, opts)),
+  rollback: locked(rollback),
+  move: locked(move), adopt: locked(adopt), clean: locked(clean), finish, status, versions, profileName, currentCatalog, missingBytes,
+};

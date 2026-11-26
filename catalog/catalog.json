@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "version": "2026.11.28",
+  "version": "2026.11.28.1",
   "runtimes": {
     "unsloth-b12631-vulkan-win-x64": {
       "name": "llama.cpp b12631 (Unsloth build), Vulkan",
@@ -282,6 +282,7 @@
   },
   "profiles": {
     "flash": {
+      "modelVersion": "1.0",
       "summary": "Fast everyday chat on any PC",
       "rank": 1,
       "interactive": true,
@@ -386,6 +387,7 @@
       ]
     },
     "smart": {
+      "modelVersion": "1.0",
       "summary": "Capable assistant with images and a 200k context",
       "rank": 2,
       "interactive": true,
@@ -696,6 +698,7 @@
       ]
     },
     "pro": {
+      "modelVersion": "1.0",
       "summary": "Most capable, images and a 500k context (NVIDIA GPU, 32 GB RAM)",
       "rank": 3,
       "interactive": false,

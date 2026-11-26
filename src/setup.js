@@ -96,9 +96,9 @@ function plan(opts) {
   const advice = recommendations(catalog, hw, state);
   const preselect = opts.profiles
     ? String(opts.profiles).toLowerCase().split(/[\s,;]+/).filter(Boolean)
-    : recommended(catalog, hw);
+    : recommended(catalog, hw, state.profiles);
 
-  const profiles = resolveAll(catalog, hw).map(r => {
+  const profiles = resolveAll(catalog, hw, state.profiles).map(r => {
     const p = catalog.profiles[r.profile];
     const base = { profile: r.profile, id: manage.profileName(r.profile), summary: p.summary, rank: p.rank, required: Boolean(p.always) };
     if (r.error) return { ...base, available: false, reason: r.error };
@@ -113,6 +113,7 @@ function plan(opts) {
       selected: preselect.includes(r.profile) || Boolean(p.always),
       installed: Boolean(state.profiles[r.profile]) && files.every(f => !f.missing),
       model: r.model.name,
+      modelVersion: r.modelVersion,
       publisher: r.model.publisher || null,
       runtime: r.runtime.name,
       variant: r.variant.id,

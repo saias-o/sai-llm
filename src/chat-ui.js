@@ -10,7 +10,7 @@
 //   PUT    /saias/chat/api/settings
 //   POST   /saias/chat/api/extract         PDF bytes in, text out (attachments)
 //   GET    /saias/chat/api/images          local image generator availability
-//   POST   /saias/chat/api/images          generate a 512 × 512 image
+//   POST   /saias/chat/api/images          generate an image
 //   GET    /saias/chat/api/images/<conversation>/<image>.png
 // Conversations are the same JSON files the SAIAS app's native chat uses, in
 // <standard SAIAS folder>/Conversations, so both show the same history.

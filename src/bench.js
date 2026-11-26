@@ -11,6 +11,7 @@ const path = require('node:path');
 const { setTimeout: delay } = require('node:timers/promises');
 const paths = require('./paths');
 const store = require('./store');
+const { modelVersion } = require('./catalog');
 const ui = require('./ui');
 const { chat } = require('./eval/client');
 const { filler, CHARS_PER_TOKEN } = require('./eval/suites/context');
@@ -120,7 +121,14 @@ async function run(opts) {
     const chosen = opts.profile ? [installed.pickModel(models, opts.profile)] : models;
     await require('./hub-client').ensureRunning();
     hubUrl = installed.HUB_URL;
-    targets = chosen.map(m => ({ endpoint: `${hubUrl}/v1`, model: m.id, profile: m.profile, contextLength: m.context }));
+    const active = (await hubJson(hubUrl, '/saias/status')).profiles;
+    targets = chosen.map(m => {
+      const running = active.find(p => p.id === m.id);
+      if (!running || running.variant !== m.variant || modelVersion(running) !== m.modelVersion) {
+        throw new Error(`Restart SAIAS before benchmarking ${m.id} ${m.modelVersion}.`);
+      }
+      return { endpoint: `${hubUrl}/v1`, model: m.id, profile: m.profile, modelVersion: m.modelVersion, variant: m.variant, contextLength: m.context };
+    });
   }
 
   ui.step('Benchmark');
@@ -132,7 +140,8 @@ async function run(opts) {
       const loadSeconds = hubUrl ? await load(hubUrl, t.model, Boolean(opts.cold)) : null;
       if (loadSeconds !== null) ui.info(`  load: ${loadSeconds.toFixed(1)} s`);
       const m = await measure(t, t.contextLength);
-      results.push({ model: t.model, profile: t.profile, loadSeconds: round(loadSeconds), ...m, rating: m.genTps ? rate(m.genTps) : 'unknown' });
+      results.push({ model: t.model, profile: t.profile, modelVersion: t.modelVersion, variant: t.variant,
+        loadSeconds: round(loadSeconds), ...m, rating: m.genTps ? rate(m.genTps) : 'unknown' });
     } catch (e) {
       ui.bad(`  ${e.message}`);
       results.push({ model: t.model, profile: t.profile, error: e.message });
@@ -141,13 +150,19 @@ async function run(opts) {
 
   const date = new Date().toISOString();
   if (hubUrl) {
-    const state = store.load();
-    state.benchmarks ||= {};
-    for (const r of results) {
-      if (r.error || !r.profile) continue;
-      state.benchmarks[r.profile] = { variant: state.profiles[r.profile]?.variant, date, loadSeconds: r.loadSeconds, promptTps: r.promptTps, genTps: r.genTps, rating: r.rating };
-    }
-    store.save(state);
+    try {
+      await store.withLock(() => {
+        const state = store.load();
+        state.benchmarks ||= {};
+        for (const r of results) {
+          const entry = state.profiles[r.profile];
+          if (r.error || !entry || entry.variant !== r.variant || modelVersion(entry) !== r.modelVersion) continue;
+          state.benchmarks[r.profile] = { variant: r.variant, modelVersion: r.modelVersion, date,
+            loadSeconds: r.loadSeconds, promptTps: r.promptTps, genTps: r.genTps, rating: r.rating };
+        }
+        store.save(state);
+      });
+    } catch (error) { ui.bad(`Could not save benchmark results to the installation: ${error.message}`); }
   }
   const out = path.join(paths.home, 'benchmarks', `${date.replace(/[:.]/g, '-')}.json`);
   fs.mkdirSync(path.dirname(out), { recursive: true });

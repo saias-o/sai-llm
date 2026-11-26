@@ -58,7 +58,7 @@ function loadProfiles() {
     throw new Error('SAIAS is not installed. Run Install-SAIAS.cmd (or "saias install") first.');
   }
   for (const [id, entry] of Object.entries(state.profiles)) {
-    const variant = catalog.profiles[id]?.variants.find(v => v.id === entry.variant);
+    const variant = catalogs.installedVariant(catalog, id, entry);
     if (!variant) { log(`saias-${id}: variant ${entry.variant} not in the catalog, skipped`); continue; }
     const model = catalog.models[variant.model];
     const runtime = catalog.runtimes[variant.runtime];
@@ -68,7 +68,7 @@ function loadProfiles() {
     if (missing.length) { log(`saias-${id}: missing ${missing.join(', ')}; run "saias install"`); continue; }
     const name = 'saias-' + id;
     profiles.set(name, {
-      id, name, variant, model, runtime, device: entry.device,
+      id, name, variant, model, runtime, device: entry.device, modelVersion: catalogs.modelVersion(entry), pinned: Boolean(entry.pinned),
       exe: store.binaryPath(dir, runtime), files, template: llama.templatePath(paths.ROOT, model),
       status: 'unloaded', failed: null, port: null, proc: null, loading: null,
     });
@@ -220,7 +220,7 @@ function modelEntry(p) {
     status, source: 'preset', can_remove: false, context_length: p.variant.server['ctx-size'] || p.model.context,
     architecture: { input_modalities: p.model.vision ? ['text', 'image'] : ['text'], output_modalities: ['text'] },
     saias: {
-      profile: p.id, model: p.model.name, variant: p.variant.id, vision: Boolean(p.model.vision),
+      profile: p.id, model: p.model.name, variant: p.variant.id, modelVersion: p.modelVersion, pinned: p.pinned, vision: Boolean(p.model.vision),
       reasoning: p.variant.reasoning ? { default: p.variant.reasoning.default, levels: Object.keys(p.variant.reasoning.levels) } : null,
     },
   };
@@ -317,7 +317,9 @@ async function handle(req, res) {
   }
   if (await require('./chat-ui').handle(req, res, p, prepareImage)) return;
   if (req.method === 'GET' && p === '/saias/status') {
-    return send(res, 200, { port: PORT, exclusive: EXCLUSIVE, profiles: [...profiles.values()].map(x => ({ id: x.name, status: x.status, model: x.model.name, variant: x.variant.id })) });
+    return send(res, 200, { port: PORT, exclusive: EXCLUSIVE, profiles: [...profiles.values()].map(x => ({
+      id: x.name, status: x.status, model: x.model.name, variant: x.variant.id, modelVersion: x.modelVersion, pinned: x.pinned,
+    })) });
   }
   if (!ui) {
     if (p === '/') { res.writeHead(302, { Location: '/saias/chat/' }); res.end(); return; }

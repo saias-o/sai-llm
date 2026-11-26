@@ -68,6 +68,8 @@ SAIAS builds on the same llama.cpp engine. Ollama, LM Studio and Jan are better 
 | `saias claude` | Runs Claude Code on a SAIAS model (`--profile smart`; other options go to Claude Code). |
 | `saias update` | Fetches the latest catalog and installs the newer models it selects for this PC. `--check` only reports. |
 | `saias rollback` | Returns to the models installed before the last update. |
+| `saias versions [profile]` | Lists versions, compatibility and the active choice. Supports `--json`. |
+| `saias use <profile> <version\|latest>` | Selects one version for a profile, or resumes compatible model updates. Supports `--check` and `--yes`. |
 | `saias adopt <folder>` | Registers runtimes and model files already on disk. `--move` moves them into the SAIAS folder (same drive only), `--verify` checks their sha256. |
 | `saias install-image [folder]` | Installs the local image generator for SAIAS Chat on Windows x64. Pass a folder to store its model and runtimes on another drive. |
 | `saias status` | Shows the hardware, the installed profiles, their measured speed and the hub state. `--json` for scripts. |
@@ -107,6 +109,24 @@ The installer picks the first variant the PC can run, and preselects every profi
 | `saias-pro` | Inkling 2 Mini UD-Q4_K_XL, images | llama.cpp b12631: CUDA, Metal | 500,000 (200,000 on Metal) | NVIDIA GPU with 8 GB VRAM and 32 GB RAM, or Apple Silicon with 48 GB |
 
 `saias-flash` is fast but small: use it for chat, and `saias-smart` or `saias-pro` for agent and coding work. Model licenses are shown, and must be accepted, during installation.
+
+## Model versions
+
+Each profile has its own version numbers, such as `1.0`, `1.1`, and `2.0`. The initial `1.0` models are LFM3 1.7B for `saias-flash`, Bonsai 2 27B for `saias-smart`, Inkling 2 Mini for `saias-pro`, and DreamShaper 8 LCM for `saias-image`. The public names used in chat, the API and integrations stay stable.
+
+```sh
+saias versions saias-smart
+saias use saias-smart 1.0
+saias use saias-smart latest
+```
+
+A numbered selection pins just that profile. `saias update` keeps a pinned text profile on that version and continues to update the others. `latest` removes the pin and selects the newest compatible release offered by the installed catalog. Restart SAIAS after changing a text profile. `saias-image` reads its selection for each generation. Use `saias install-image` to apply the latest image release shipped with SAIAS or reinstall a pinned image version. An older version is downloaded and checksum-verified if its files are no longer cached.
+
+### Publishing a new version
+
+For a text model, put the current `variants` array under `previousVersions` using its current `modelVersion` as the key. Set the new `modelVersion` and `variants`, retain the old model files, runtime definitions and prompt templates, and increment the catalog version. Give new weights and runtime archives new IDs. Published model versions keep their weight checksums. Archived versions also keep their hardware variants and runtime settings.
+
+For an image model, archive the current `name`, license, `model`, `runtimes` and `generation` under `previousVersions` in `catalog/image.json` before changing the current `modelVersion` and release fields. Include the archived manifest in later SAIAS releases.
 
 ## Image generation in SAIAS Chat
 

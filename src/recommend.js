@@ -11,7 +11,7 @@ const ui = require('./ui');
 const { resolveAll } = require('./resolve');
 
 function recommendations(catalog = catalogs.installed() || catalogs.bundled(), hw = hardware.detect(), state = store.load()) {
-  const profiles = resolveAll(catalog, hw).map(r => {
+  const profiles = resolveAll(catalog, hw, state.profiles).map(r => {
     const profile = catalog.profiles[r.profile];
     const entry = { id: 'saias-' + r.profile, profile: r.profile, summary: profile.summary, rank: profile.rank, interactive: Boolean(profile.interactive) };
     if (r.error) return { ...entry, available: false, error: r.error };
@@ -22,6 +22,8 @@ function recommendations(catalog = catalogs.installed() || catalogs.bundled(), h
       available: true,
       installed: Boolean(installed),
       model: r.model.name,
+      modelVersion: r.modelVersion,
+      pinned: Boolean(installed?.pinned),
       runtime: r.runtime.name,
       variant: r.variant.id,
       slow: Boolean(r.variant.slow),
@@ -29,7 +31,8 @@ function recommendations(catalog = catalogs.installed() || catalogs.bundled(), h
       note: r.variant.note || null,
       context: r.variant.server['ctx-size'] || r.model.context,
       vision: Boolean(r.model.vision),
-      benchmark: bench && installed && bench.variant === installed.variant ? { genTps: bench.genTps, rating: bench.rating, date: bench.date } : null,
+      benchmark: bench && bench.variant === r.variant.id && catalogs.modelVersion(bench) === r.modelVersion
+        ? { genTps: bench.genTps, rating: bench.rating, date: bench.date } : null,
     };
   }).sort((a, b) => b.rank - a.rank);
 
@@ -62,7 +65,7 @@ function run(opts) {
   for (const p of r.profiles) {
     if (!p.available) { ui.info(`${p.id.padEnd(12)} not available: ${p.error}`); continue; }
     const speed = p.benchmark ? `${p.benchmark.genTps} tokens/s (${p.benchmark.rating})` : 'not measured';
-    ui.info(`${p.id.padEnd(12)} ${p.model}, ${p.context.toLocaleString('en-US')} tokens, ${speed}${p.installed ? '' : ', not installed'}`);
+    ui.info(`${p.id.padEnd(12)} ${p.modelVersion} ${p.model}, ${p.context.toLocaleString('en-US')} tokens, ${speed}${p.installed ? '' : ', not installed'}`);
   }
   if (r.mostCapable) ui.ok(`Most capable: ${r.mostCapable.id}. ${r.mostCapable.reason}`);
   if (r.everyday) ui.ok(`Everyday pick: ${r.everyday.id}. ${r.everyday.reason}`);

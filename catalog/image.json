@@ -1,7 +1,14 @@
 {
   "id": "saias-image",
+  "modelVersion": "1.0",
   "name": "DreamShaper 8 LCM Q5_1",
   "license": "https://huggingface.co/spaces/CompVis/stable-diffusion-license",
+  "licenseName": "CreativeML OpenRAIL-M",
+  "generation": {
+    "width": 512,
+    "height": 512,
+    "args": ["--sampling-method", "lcm", "--scheduler", "lcm", "--steps", "4", "--cfg-scale", "1", "--seed", "-1", "--vae-tiling", "--vae-tile-size", "40x40", "--vae-tile-overlap", "0.25", "--mmap"]
+  },
   "model": {
     "name": "LCM_Dreamshaper_v8-q5_1.gguf",
     "url": "https://huggingface.co/acojaco/dreamshaper-lcm-gguf/resolve/0c0cc988773d38a5b86746295515caa459961b17/LCM_Dreamshaper_v8-q5_1.gguf",

@@ -271,7 +271,7 @@ function renderModelMenu(menu) {
     const item = el('button', 'menu-item');
     item.type = 'button';
     const info = m.saias || {};
-    const sub = [info.model, m.context_length ? `${compact(m.context_length)} context` : '', info.vision ? 'images' : '',
+    const sub = [info.modelVersion, info.model, info.pinned ? 'pinned' : '', m.context_length ? `${compact(m.context_length)} context` : '', info.vision ? 'images' : '',
       m.status?.value === 'loaded' ? 'loaded' : ''].filter(Boolean).join(' · ');
     item.innerHTML = `<span class="check">${m.id === state.current.data.model ? icons.check : ''}</span>
       <span><span class="title"></span><span class="sub"></span></span>`;
@@ -376,6 +376,7 @@ function renderTopbar() {
   $('reasoning-picker').hidden = !model;
   $('gauge').hidden = !model;
   $('model-name').textContent = model?.id || 'No text model';
+  $('model-button').title = model?.saias?.modelVersion ? `${model.id} ${model.saias.modelVersion}` : '';
   const def = model?.saias?.reasoning?.default;
   $('reasoning-name').textContent = data.reasoning === 'default'
     ? `Reasoning: ${LEVEL_LABELS[def] || 'default'}` : `Reasoning: ${LEVEL_LABELS[data.reasoning] || data.reasoning}`;
@@ -972,6 +973,7 @@ function updateSend() {
   const imageButton = $('image-button');
   imageButton.hidden = !state.image.supported;
   imageButton.disabled = busy;
+  imageButton.title = `Generate with ${IMAGE_MODEL}${state.image.modelVersion ? ` ${state.image.modelVersion}` : ''}`;
   imageButton.classList.toggle('on', state.imageMode);
   imageButton.setAttribute('aria-pressed', String(state.imageMode));
   $('input').placeholder = state.imageMode ? 'Describe the image to create' : 'Message SAIAS';

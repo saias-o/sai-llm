@@ -20,6 +20,9 @@ Setup
   connect [tool...]  Point tools at SAIAS: hermes, opencode, codex, claude (default: detected ones)
   update             Install newer models from the latest catalog (--check, --yes)
   rollback           Return to the models installed before the last update
+  versions [profile] List available model versions and the active version (--json)
+  use <profile> <version|latest>
+                     Pin one profile to a version such as 1.0 or follow updates (--check, --yes)
   adopt <folder>     Reuse runtimes and model files already on disk (--move, --verify)
   install-image [dir] Install the local SAIAS Chat image generator (Windows x64, --yes)
   move <folder>      Move the models and the rest of the data folder, for example to another drive
@@ -90,6 +93,8 @@ async function main() {
     case 'eval': return require('./eval').run(opts);
     case 'update': return manage.update(opts);
     case 'rollback': return manage.rollback();
+    case 'versions': return manage.versions(opts._[0], opts);
+    case 'use': return manage.use(opts._[0], opts._[1], opts);
     case 'adopt': return manage.adopt(opts._[0], opts);
     case 'install-image': return require('./image').install(opts._[0], opts);
     case 'move': return manage.move(opts._[0]);
