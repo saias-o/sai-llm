@@ -79,6 +79,10 @@ function validateVariants(variants, catalog, problems) {
         if (!runtime.supports?.includes(need)) problems.push(`${v.id}: runtime ${v.runtime} lacks "${need}" needed by ${v.model}`);
       }
     }
+    const budget = v.server?.['reasoning-budget'];
+    if (v.reasoning?.enforceBudget && (!Number.isSafeInteger(budget) || budget < 1)) {
+      problems.push(`${v.id}: an enforced reasoning budget must be a positive integer`);
+    }
     for (const level of Object.keys(v.reasoning?.levels || {})) {
       if (!REASONING_LEVELS.includes(level)) problems.push(`${v.id}: unknown reasoning level "${level}"`);
     }

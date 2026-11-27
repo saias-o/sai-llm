@@ -110,7 +110,7 @@ The installer picks the first variant the PC can run, and preselects every profi
 | `saias-smart` | Ternary Bonsai 2 27B PTQ1_0, images | PrismML llama.cpp b12128: CUDA, Metal; Vulkan or CPU is slower | 200,000 (65,536 on Vulkan, 16,384 with 8 GB RAM) | NVIDIA GPU with 8 GB VRAM, Apple Silicon with 16 GB, or 8 GB RAM (slow: CPU, weights mapped from disk) |
 | `saias-pro` | Inkling 2 Mini UD-Q4_K_XL, images | llama.cpp b12631: CUDA, Metal | 500,000 (200,000 on Metal) | NVIDIA GPU with 8 GB VRAM and 32 GB RAM, or Apple Silicon with 48 GB |
 
-`saias-flash` is fast but small: use it for chat, and `saias-smart` or `saias-pro` for agent and coding work. Model licenses are shown, and must be accepted, during installation.
+`saias-flash` is fast but small: use it for chat, and `saias-smart` or `saias-pro` for agent and coding work. Flash starts with reasoning off. When a client enables reasoning, Flash budgets 256 tokens for that step. Model licenses are shown, and must be accepted, during installation.
 
 ## Model versions
 

@@ -107,6 +107,15 @@ function applyReasoning(body, variant, defaultLevel) {
   return out;
 }
 
+// An explicit Anthropic thinking budget overrides llama-server's startup
+// budget, so limit it before forwarding the request.
+function limitThinkingBudget(body, maxTokens) {
+  if (maxTokens === undefined || body.thinking?.type !== 'enabled') return body;
+  const requested = body.thinking.budget_tokens;
+  if (Number.isSafeInteger(requested) && requested > 0 && requested <= maxTokens) return body;
+  return { ...body, thinking: { ...body.thinking, budget_tokens: maxTokens } };
+}
+
 // Claude Code can put system reminders between messages. Qwen's template
 // accepts system text only at the beginning, so retain it in the Messages API's
 // top-level system field without changing the order of the user and tool turns.
@@ -124,4 +133,4 @@ function templatePath(root, model) {
   return model.template ? path.join(root, model.template) : null;
 }
 
-module.exports = { version, listDevices, backendOf, pickDevice, serverArgs, applyReasoning, requestedLevel, mergeSystemMessages, templatePath, toArgs };
+module.exports = { version, listDevices, backendOf, pickDevice, serverArgs, applyReasoning, requestedLevel, limitThinkingBudget, mergeSystemMessages, templatePath, toArgs };

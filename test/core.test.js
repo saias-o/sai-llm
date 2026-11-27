@@ -54,6 +54,11 @@ test('server arguments come from the variant', () => {
   assert.equal(args[args.indexOf('--device') + 1], 'none');
   assert.equal(args[args.indexOf('--n-gpu-layers') + 1], '0'); // CPU fallback
   assert.ok(args.includes('--jinja') && !args.includes('true'));
+  for (const flash of catalog.profiles.flash.variants) {
+    const flags = llama.serverArgs({ alias: 'saias-flash', port: 9000, variant: flash, files: { model: 'm.gguf' } });
+    assert.equal(flags[flags.indexOf('--reasoning-budget') + 1], '256');
+    assert.deepEqual(JSON.parse(flags[flags.indexOf('--chat-template-kwargs') + 1]), { enable_thinking: false });
+  }
 });
 
 test('reasoning levels are translated for each API', () => {
@@ -70,6 +75,21 @@ test('reasoning levels are translated for each API', () => {
   const omni = catalog.profiles.omni.variants[0];
   assert.deepEqual(llama.applyReasoning({}, omni, omni.reasoning.default).chat_template_kwargs, { enable_thinking: true });
   assert.deepEqual(llama.applyReasoning({ thinking: { type: 'disabled' } }, omni, omni.reasoning.default).chat_template_kwargs, { enable_thinking: false });
+});
+
+test('Flash limits explicit Anthropic budgets while preserving the requested reasoning mode', () => {
+  const flash = catalog.profiles.flash.variants[0];
+  assert.equal(flash.reasoning.enforceBudget, true);
+  const budget = flash.server['reasoning-budget'];
+  const high = { thinking: { type: 'enabled', budget_tokens: 16000 } };
+  const translated = llama.applyReasoning(high, flash);
+  const limited = llama.limitThinkingBudget(translated, budget);
+  assert.deepEqual(limited.thinking, { type: 'enabled', budget_tokens: 256 });
+  assert.deepEqual(limited.chat_template_kwargs, { enable_thinking: true });
+  assert.equal(high.thinking.budget_tokens, 16000);
+  const small = { thinking: { type: 'enabled', budget_tokens: 128 } };
+  assert.equal(llama.limitThinkingBudget(small, budget), small);
+  assert.equal(llama.limitThinkingBudget(high, undefined), high);
 });
 
 test('system reminders move ahead of the conversation for Qwen', () => {

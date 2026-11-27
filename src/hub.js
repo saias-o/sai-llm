@@ -361,12 +361,15 @@ async function handle(req, res) {
     try { await load(target); } catch (e) { return sendError(res, 503, e.message); }
   }
 
-  if (json && p === '/v1/messages' && target.model.mergeAnthropicSystemMessages) {
-    json = llama.applyReasoning(llama.mergeSystemMessages(json), target.variant, target.variant.reasoning?.default);
-    body = Buffer.from(JSON.stringify(json));
-  } else if (json && llama.requestedLevel(json)) {
-    json = llama.applyReasoning(json, target.variant);
-    body = Buffer.from(JSON.stringify(json));
+  if (json) {
+    const messagesApi = p === '/v1/messages';
+    const mergeSystem = messagesApi && target.model.mergeAnthropicSystemMessages;
+    const prompt = mergeSystem ? llama.mergeSystemMessages(json) : json;
+    const translated = llama.applyReasoning(prompt, target.variant, mergeSystem ? target.variant.reasoning?.default : undefined);
+    const prepared = messagesApi && target.variant.reasoning?.enforceBudget
+      ? llama.limitThinkingBudget(translated, target.variant.server['reasoning-budget'])
+      : translated;
+    if (prepared !== json) body = Buffer.from(JSON.stringify(prepared));
   }
   return forward(req, res, target.port, body);
 }
