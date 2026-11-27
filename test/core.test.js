@@ -56,7 +56,7 @@ test('server arguments come from the variant', () => {
   assert.ok(args.includes('--jinja') && !args.includes('true'));
   for (const flash of catalog.profiles.flash.variants) {
     const flags = llama.serverArgs({ alias: 'saias-flash', port: 9000, variant: flash, files: { model: 'm.gguf' } });
-    assert.equal(flags[flags.indexOf('--reasoning-budget') + 1], '256');
+    assert.equal(flags[flags.indexOf('--reasoning-budget') + 1], '512');
     assert.deepEqual(JSON.parse(flags[flags.indexOf('--chat-template-kwargs') + 1]), { enable_thinking: false });
   }
 });
@@ -84,7 +84,7 @@ test('Flash limits explicit Anthropic budgets while preserving the requested rea
   const high = { thinking: { type: 'enabled', budget_tokens: 16000 } };
   const translated = llama.applyReasoning(high, flash);
   const limited = llama.limitThinkingBudget(translated, budget);
-  assert.deepEqual(limited.thinking, { type: 'enabled', budget_tokens: 256 });
+  assert.deepEqual(limited.thinking, { type: 'enabled', budget_tokens: 512 });
   assert.deepEqual(limited.chat_template_kwargs, { enable_thinking: true });
   assert.equal(high.thinking.budget_tokens, 16000);
   const small = { thinking: { type: 'enabled', budget_tokens: 128 } };
