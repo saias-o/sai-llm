@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "version": "2026.11.28.6",
+  "version": "2026.11.28.7",
   "runtimes": {
     "unsloth-b12631-vulkan-win-x64": {
       "name": "llama.cpp b12631 (Unsloth build), Vulkan",
@@ -457,7 +457,7 @@
             "chat-template-kwargs": {
               "enable_thinking": false
             },
-            "reasoning-budget": 128
+            "reasoning-budget": 256
           },
           "reasoning": {
             "default": "none",
@@ -494,7 +494,7 @@
             "chat-template-kwargs": {
               "enable_thinking": false
             },
-            "reasoning-budget": 128
+            "reasoning-budget": 256
           },
           "reasoning": {
             "default": "none",
@@ -531,7 +531,7 @@
             "chat-template-kwargs": {
               "enable_thinking": false
             },
-            "reasoning-budget": 128
+            "reasoning-budget": 256
           },
           "reasoning": {
             "default": "none",
