@@ -37,6 +37,7 @@ Run
   status             Show the installation and the hub state (--json)
   recommend          Show which profile suits this PC best (--json)
   claude [options]   Run Claude Code on a SAIAS model (--profile smart|pro|flash)
+  omni                Run the Omni voice client on SAIAS (--profile smart|pro|flash, --open)
 
 Measure
   bench              Measure load time, prompt and generation speed of each profile
@@ -87,6 +88,7 @@ async function main() {
     case 'uninstall': return require('./setup').run({ ...opts, uninstall: true });
     case 'connect': return require('./integrations').connect(opts._, { yes: opts.yes });
     case 'claude': return require('./integrations/claude').launch(rest);
+    case 'omni': return require('./integrations/omni').launch(rest);
     case 'start': return require('./hub').start({ open: Boolean(opts.open) });
     case 'stop': return stop();
     case 'bench': return require('./bench').run(opts);

@@ -1,0 +1,3 @@
+[submodule "plugins/omni"]
+	path = plugins/omni
+	url = https://github.com/saias-o/Omni.git

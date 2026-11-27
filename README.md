@@ -66,6 +66,7 @@ SAIAS builds on the same llama.cpp engine. Ollama, LM Studio and Jan are better 
 | `saias start` | Starts the hub. `--open` opens SAIAS Chat when the image generator is installed, otherwise Llama Chat. |
 | `saias stop` | Stops the hub and its model servers. |
 | `saias claude` | Runs Claude Code on a SAIAS model (`--profile smart`; other options go to Claude Code). |
+| `saias omni` | Starts the optional Omni voice client on a SAIAS model (`--profile smart`, `--open`). |
 | `saias update` | Fetches the latest catalog and installs the newer models it selects for this PC. `--check` only reports. |
 | `saias rollback` | Returns to the models installed before the last update. |
 | `saias versions [profile]` | Lists versions, compatibility and the active choice. Supports `--json`. |
@@ -127,6 +128,25 @@ A numbered selection pins just that profile. `saias update` keeps a pinned text 
 For a text model, put the current `variants` array under `previousVersions` using its current `modelVersion` as the key. Set the new `modelVersion` and `variants`, retain the old model files, runtime definitions and prompt templates, and increment the catalog version. Give new weights and runtime archives new IDs. Published model versions keep their weight checksums. Archived versions also keep their hardware variants and runtime settings.
 
 For an image model, archive the current `name`, license, `model`, `runtimes` and `generation` under `previousVersions` in `catalog/image.json` before changing the current `modelVersion` and release fields. Include the archived manifest in later SAIAS releases.
+
+## Omni voice client
+
+[Omni](https://github.com/saias-o/Omni) is an optional browser client with voice
+input, spoken replies and a text composer. It uses SAIAS's local model profiles
+and is available alongside SAIAS Chat. From a Git checkout of SAIAS with at
+least one text profile installed, run:
+
+```sh
+git submodule update --init plugins/omni
+npm ci --prefix plugins/omni
+saias omni --open
+```
+
+Invoke `./saias` on macOS and Linux or `.\saias.cmd` in Windows PowerShell if
+SAIAS is outside your PATH. Omni defaults to the highest-ranked installed
+profile. Use `--profile smart` to choose another installed profile.
+In Chrome or Edge, click the page, allow the microphone and say **“Hey Omni”**.
+You can also type a message. Press Ctrl+C in the terminal to stop Omni.
 
 ## Image generation in SAIAS Chat
 
