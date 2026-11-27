@@ -27,12 +27,27 @@ async function launch(args) {
     throw new Error('Install Omni dependencies first with "npm ci --prefix plugins/omni".');
   }
 
-  const model = pickModel(requireInstalled(), values.profile);
+  requireInstalled();
   await ensureRunning();
-  ui.info(`Omni on ${model.id} (${model.name}) through ${HUB_URL}`);
+  const response = await fetch(`${HUB_URL}/v1/models`, { signal: AbortSignal.timeout(5000) });
+  if (!response.ok) throw new Error(`Could not list SAIAS models (HTTP ${response.status}).`);
+  const { data } = await response.json();
+  const models = data.filter(({ id, saias }) => id.startsWith('saias-') && saias).map(({ id, saias }) => ({
+    id, profile: saias.profile, name: saias.model, vision: saias.vision,
+  }));
+  const model = values.profile ? pickModel(models, values.profile) : { id: 'saias-omni' };
+  ui.info(`Omni defaults to ${model.id} through ${HUB_URL}`);
   const child = spawn(process.execPath, values.open ? [entry, '--open'] : [entry], {
     cwd,
-    env: { ...environment(model), OMNI_MODEL: model.id, OMNI_BRAIN: 'claude', VITE_BACKEND: 'bridge' },
+    env: {
+      ...environment(model),
+      OMNI_MODEL: model.id,
+      OMNI_SAIAS_MODELS: JSON.stringify(models),
+      OMNI_BRAIN: 'claude',
+      OMNI_EFFORT: process.env.OMNI_EFFORT ?? 'low',
+      MAX_THINKING_TOKENS: process.env.MAX_THINKING_TOKENS ?? '0',
+      VITE_BACKEND: 'bridge',
+    },
     stdio: 'inherit',
   });
   return new Promise((resolve, reject) => {

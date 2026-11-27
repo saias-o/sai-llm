@@ -37,7 +37,7 @@ Run
   status             Show the installation and the hub state (--json)
   recommend          Show which profile suits this PC best (--json)
   claude [options]   Run Claude Code on a SAIAS model (--profile smart|pro|flash)
-  omni                Run the Omni voice client on SAIAS (--profile smart|pro|flash, --open)
+  omni                Run the Omni voice client (defaults to saias-omni; --profile NAME, --open)
 
 Measure
   bench              Measure load time, prompt and generation speed of each profile

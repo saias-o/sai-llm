@@ -81,7 +81,7 @@ SAIAS builds on the same llama.cpp engine. Ollama, LM Studio and Jan are better 
 
 ## How SAIAS works
 
-**Profiles, not models.** Clients only ever see three stable names: `saias-flash`, `saias-smart` and `saias-pro`. The [catalog](catalog/catalog.json) says which model, llama.cpp runtime and server settings each profile uses on which hardware. A new catalog version can replace the model behind a profile, and `saias update` installs it without any change in Llama Chat, Hermes or other clients.
+**Profiles, not models.** Clients see stable names such as `saias-omni`, `saias-flash`, `saias-smart` and `saias-pro`. The [catalog](catalog/catalog.json) says which model, llama.cpp runtime and server settings each profile uses on which hardware. A new catalog version can replace the model behind a profile, and `saias update` installs it without any change in Llama Chat, Hermes or other clients.
 
 **Catalog.** It lists:
 
@@ -105,6 +105,7 @@ The installer picks the first variant the PC can run, and preselects every profi
 
 | Profile | Model | Runtime | Context | Requirements |
 | --- | --- | --- | ---: | --- |
+| `saias-omni` | Qwen3.5 4B Q4_K_M, images | llama.cpp b12631: Vulkan or CPU, Metal on macOS | 32,768 | 8 GB RAM |
 | `saias-flash` | LFM3 1.7B Q4_K_M | llama.cpp b12631: Vulkan or CPU, Metal on macOS | 262,144 | Any PC |
 | `saias-smart` | Ternary Bonsai 2 27B PTQ1_0, images | PrismML llama.cpp b12128: CUDA, Metal; Vulkan or CPU is slower | 200,000 (65,536 on Vulkan, 16,384 with 8 GB RAM) | NVIDIA GPU with 8 GB VRAM, Apple Silicon with 16 GB, or 8 GB RAM (slow: CPU, weights mapped from disk) |
 | `saias-pro` | Inkling 2 Mini UD-Q4_K_XL, images | llama.cpp b12631: CUDA, Metal | 500,000 (200,000 on Metal) | NVIDIA GPU with 8 GB VRAM and 32 GB RAM, or Apple Silicon with 48 GB |
@@ -113,7 +114,7 @@ The installer picks the first variant the PC can run, and preselects every profi
 
 ## Model versions
 
-Each profile has its own version numbers, such as `1.0`, `1.1`, and `2.0`. The initial `1.0` models are LFM3 1.7B for `saias-flash`, Bonsai 2 27B for `saias-smart`, Inkling 2 Mini for `saias-pro`, and DreamShaper 8 LCM for `saias-image`. The public names used in chat, the API and integrations stay stable.
+Each profile has its own version numbers, such as `1.0`, `1.1`, and `2.0`. The initial `1.0` models are Qwen3.5 4B for `saias-omni`, LFM3 1.7B for `saias-flash`, Bonsai 2 27B for `saias-smart`, Inkling 2 Mini for `saias-pro`, and DreamShaper 8 LCM for `saias-image`. The public names used in chat, the API and integrations stay stable.
 
 ```sh
 saias versions saias-smart
@@ -143,8 +144,12 @@ saias omni --open
 ```
 
 Invoke `./saias` on macOS and Linux or `.\saias.cmd` in Windows PowerShell if
-SAIAS is outside your PATH. Omni defaults to the highest-ranked installed
-profile. Use `--profile smart` to choose another installed profile.
+SAIAS is outside your PATH. Omni defaults to `saias-omni`, the lightweight
+vision profile preselected by the SAIAS installer on supported platforms.
+In Omni's **Settings**, choose any profile served by SAIAS. The browser
+remembers the choice and uses it from the next message. Use `--profile smart`
+to change the launch default. If `saias-omni` is missing, add it in the SAIAS
+installer or select an installed profile in Settings.
 In Chrome or Edge, click the page, allow the microphone and say **“Hey Omni”**.
 You can also type a message. Press Ctrl+C in the terminal to stop Omni.
 

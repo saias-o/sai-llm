@@ -361,7 +361,10 @@ async function handle(req, res) {
     try { await load(target); } catch (e) { return sendError(res, 503, e.message); }
   }
 
-  if (json && llama.requestedLevel(json)) {
+  if (json && p === '/v1/messages' && target.model.mergeAnthropicSystemMessages) {
+    json = llama.applyReasoning(llama.mergeSystemMessages(json), target.variant, target.variant.reasoning?.default);
+    body = Buffer.from(JSON.stringify(json));
+  } else if (json && llama.requestedLevel(json)) {
     json = llama.applyReasoning(json, target.variant);
     body = Buffer.from(JSON.stringify(json));
   }

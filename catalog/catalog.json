@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "version": "2026.11.28.1",
+  "version": "2026.11.28.2",
   "runtimes": {
     "unsloth-b12631-vulkan-win-x64": {
       "name": "llama.cpp b12631 (Unsloth build), Vulkan",
@@ -278,9 +278,153 @@
           "sha256": "3bff75ffeb2d6e0371ba7bd42e30d26a7d98aea681fa44b03b5a20891cfa2c5f"
         }
       }
+    },
+    "qwen35-4b-q4km": {
+      "name": "Qwen3.5 4B Q4_K_M",
+      "license": {
+        "name": "Apache-2.0",
+        "url": "https://huggingface.co/Qwen/Qwen3.5-4B/blob/main/LICENSE"
+      },
+      "vision": true,
+      "mergeAnthropicSystemMessages": true,
+      "context": 262144,
+      "files": {
+        "model": {
+          "name": "Qwen3.5-4B-Q4_K_M.gguf",
+          "url": "https://huggingface.co/unsloth/Qwen3.5-4B-GGUF/resolve/e87f176479d0855a907a41277aca2f8ee7a09523/Qwen3.5-4B-Q4_K_M.gguf",
+          "size": 2740937888,
+          "sha256": "00fe7986ff5f6b463e62455821146049db6f9313603938a70800d1fb69ef11a4"
+        },
+        "mmproj": {
+          "name": "mmproj-F16.gguf",
+          "url": "https://huggingface.co/unsloth/Qwen3.5-4B-GGUF/resolve/e87f176479d0855a907a41277aca2f8ee7a09523/mmproj-F16.gguf",
+          "size": 672423616,
+          "sha256": "cd88edcf8d031894960bb0c9c5b9b7e1fea6ebee02b9f7ce925a00d12891f864"
+        }
+      }
     }
   },
   "profiles": {
+    "omni": {
+      "label": "Omni",
+      "summary": "Lightweight text and vision for the Omni voice client",
+      "rank": 0,
+      "interactive": true,
+      "modelVersion": "1.0",
+      "variants": [
+        {
+          "id": "omni-vulkan",
+          "model": "qwen35-4b-q4km",
+          "runtime": "unsloth-b12631-vulkan-win-x64",
+          "requires": {
+            "ramGB": 8
+          },
+          "device": "auto",
+          "server": {
+            "ctx-size": 32768,
+            "parallel": 1,
+            "n-gpu-layers": 99,
+            "batch-size": 512,
+            "ubatch-size": 128,
+            "flash-attn": "on",
+            "cache-type-k": "q8_0",
+            "cache-type-v": "q8_0",
+            "jinja": true,
+            "temp": 0.7,
+            "top-k": 20,
+            "repeat-penalty": 1,
+            "top-p": 0.8,
+            "min-p": 0,
+            "presence-penalty": 1.5
+          },
+          "reasoning": {
+            "default": "none",
+            "levels": {
+              "none": {
+                "enable_thinking": false
+              },
+              "medium": {
+                "enable_thinking": true
+              }
+            }
+          }
+        },
+        {
+          "id": "omni-vulkan-linux",
+          "model": "qwen35-4b-q4km",
+          "runtime": "unsloth-b12631-vulkan-linux-x64",
+          "requires": {
+            "ramGB": 8
+          },
+          "device": "auto",
+          "server": {
+            "ctx-size": 32768,
+            "parallel": 1,
+            "n-gpu-layers": 99,
+            "batch-size": 512,
+            "ubatch-size": 128,
+            "flash-attn": "on",
+            "cache-type-k": "q8_0",
+            "cache-type-v": "q8_0",
+            "jinja": true,
+            "temp": 0.7,
+            "top-k": 20,
+            "repeat-penalty": 1,
+            "top-p": 0.8,
+            "min-p": 0,
+            "presence-penalty": 1.5
+          },
+          "reasoning": {
+            "default": "none",
+            "levels": {
+              "none": {
+                "enable_thinking": false
+              },
+              "medium": {
+                "enable_thinking": true
+              }
+            }
+          }
+        },
+        {
+          "id": "omni-metal",
+          "model": "qwen35-4b-q4km",
+          "runtime": "unsloth-b12631-metal-macos-arm64",
+          "requires": {
+            "ramGB": 8
+          },
+          "device": "auto",
+          "server": {
+            "ctx-size": 32768,
+            "parallel": 1,
+            "n-gpu-layers": 99,
+            "batch-size": 512,
+            "ubatch-size": 128,
+            "flash-attn": "on",
+            "cache-type-k": "q8_0",
+            "cache-type-v": "q8_0",
+            "jinja": true,
+            "temp": 0.7,
+            "top-k": 20,
+            "repeat-penalty": 1,
+            "top-p": 0.8,
+            "min-p": 0,
+            "presence-penalty": 1.5
+          },
+          "reasoning": {
+            "default": "none",
+            "levels": {
+              "none": {
+                "enable_thinking": false
+              },
+              "medium": {
+                "enable_thinking": true
+              }
+            }
+          }
+        }
+      ]
+    },
     "flash": {
       "modelVersion": "1.0",
       "summary": "Fast everyday chat on any PC",

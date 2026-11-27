@@ -90,9 +90,9 @@ function requestedLevel(body) {
 // Maps the requested reasoning level onto the chat template arguments the model behind the
 // profile understands. Unsupported levels fall back to the nearest supported one. Explicit
 // chat_template_kwargs from the client win. Returns the request body to send.
-function applyReasoning(body, variant) {
+function applyReasoning(body, variant, defaultLevel) {
   const spec = variant.reasoning;
-  const wanted = requestedLevel(body);
+  const wanted = requestedLevel(body) ?? defaultLevel;
   if (!spec || !wanted) return body;
   const out = { ...body };
   delete out.reasoning_effort;
@@ -107,8 +107,21 @@ function applyReasoning(body, variant) {
   return out;
 }
 
+// Claude Code can put system reminders between messages. Qwen's template
+// accepts system text only at the beginning, so retain it in the Messages API's
+// top-level system field without changing the order of the user and tool turns.
+function mergeSystemMessages(body) {
+  if (!Array.isArray(body.messages) || !body.messages.some(message => message?.role === 'system')) return body;
+  const blocks = content => typeof content === 'string' ? [{ type: 'text', text: content }] : Array.isArray(content) ? content : [];
+  return {
+    ...body,
+    system: [...blocks(body.system), ...body.messages.filter(message => message?.role === 'system').flatMap(message => blocks(message.content))],
+    messages: body.messages.filter(message => message?.role !== 'system'),
+  };
+}
+
 function templatePath(root, model) {
   return model.template ? path.join(root, model.template) : null;
 }
 
-module.exports = { version, listDevices, backendOf, pickDevice, serverArgs, applyReasoning, requestedLevel, templatePath, toArgs };
+module.exports = { version, listDevices, backendOf, pickDevice, serverArgs, applyReasoning, requestedLevel, mergeSystemMessages, templatePath, toArgs };

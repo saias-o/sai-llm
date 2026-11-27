@@ -28,16 +28,19 @@ test('variants follow the hardware', () => {
   assert.equal(resolveProfile(catalog, 'smart', hw({ nvidia: [{ name: 'RTX', vramGB: 12 }] })).variant.id, 'smart-cuda');
   assert.equal(resolveProfile(catalog, 'smart', hw()).variant.id, 'smart-vulkan');
   assert.match(resolveProfile(catalog, 'pro', hw()).error, /NVIDIA/);
-  assert.deepEqual(recommended(catalog, hw()), ['flash', 'smart']); // compatible, even if slow
+  assert.deepEqual(recommended(catalog, hw()), ['omni', 'flash', 'smart']); // compatible, even if slow
   // 8 GB of RAM and a small NVIDIA GPU: flash, and smart on the CPU from memory-mapped weights.
   const laptop = hw({ ramGB: 8, nvidia: [{ name: 'MX450', vramGB: 2 }] });
   assert.equal(resolveProfile(catalog, 'smart', laptop).variant.id, 'smart-cpu-lowmem');
-  assert.deepEqual(recommended(catalog, laptop), ['flash', 'smart']);
+  assert.deepEqual(recommended(catalog, laptop), ['omni', 'flash', 'smart']);
   assert.deepEqual(recommended(catalog, hw({ ramGB: 4 })), ['flash']);
   const lowmem = llama.serverArgs({ alias: 'saias-smart', port: 1, variant: resolveProfile(catalog, 'smart', laptop).variant, files: { model: 'm.gguf' } }).join(' ');
   assert.match(lowmem, /--device none/);
   assert.match(lowmem, /--n-gpu-layers 0/);
-  assert.deepEqual(recommended(catalog, hw({ ramGB: 48, nvidia: [{ name: 'RTX', vramGB: 12 }] })), ['flash', 'smart', 'pro']);
+  assert.deepEqual(recommended(catalog, hw({ ramGB: 48, nvidia: [{ name: 'RTX', vramGB: 12 }] })), ['omni', 'flash', 'smart', 'pro']);
+  const omni = resolveProfile(catalog, 'omni', laptop);
+  assert.equal(omni.model.vision, true);
+  assert.ok(omni.model.files.mmproj);
   assert.equal(resolveProfile(catalog, 'flash', hw({ platform: 'linux-x64' })).variant.id, 'flash-vulkan-linux');
   assert.equal(resolveProfile(catalog, 'smart', hw({ platform: 'darwin-arm64' })).variant.id, 'smart-metal');
   assert.match(resolveProfile(catalog, 'pro', hw({ platform: 'darwin-arm64' })).error, /48 GB RAM/);
@@ -64,8 +67,21 @@ test('reasoning levels are translated for each API', () => {
   assert.deepEqual(llama.applyReasoning({ reasoning_effort: 'none', chat_template_kwargs: { x: 1 } }, pro).chat_template_kwargs, { reasoning_effort: 'none', x: 1 });
   assert.equal(llama.applyReasoning({ messages: [] }, pro).chat_template_kwargs, undefined);
   assert.equal('reasoning_effort' in llama.applyReasoning({ reasoning_effort: 'low' }, pro), false);
+  const omni = catalog.profiles.omni.variants[0];
+  assert.deepEqual(llama.applyReasoning({}, omni, omni.reasoning.default).chat_template_kwargs, { enable_thinking: false });
 });
 
+test('system reminders move ahead of the conversation for Qwen', () => {
+  const user = { role: 'user', content: [{ type: 'text', text: 'Describe this.' }, { type: 'image', source: {} }] };
+  const assistant = { role: 'assistant', content: 'I can help.' };
+  const reminder = { type: 'text', text: 'Keep replies short.' };
+  const body = { system: 'You are Omni.', messages: [user, { role: 'system', content: [reminder] }, assistant] };
+  assert.deepEqual(llama.mergeSystemMessages(body), {
+    system: [{ type: 'text', text: 'You are Omni.' }, reminder],
+    messages: [user, assistant],
+  });
+  assert.equal(body.messages.length, 3);
+});
 test('codex config: SAIAS tables are replaced, other settings kept', () => {
   const toml = 'model = "x"\n\n[a]\nk = 1\n\n# Added by SAIAS: note\n[model_providers.saias]\nname = "old"\n\n[profiles.saias]\nmodel = "old"\n\n[b]\nk = 2\n';
   const out = withoutSaiasTables(toml);
