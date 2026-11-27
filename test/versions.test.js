@@ -34,6 +34,8 @@ function profile(id, latest, releases) {
 }
 
 test('model versions stay independent across updates, cached downgrades and re-downloads', async t => {
+  const [year, month, day, revision = 0] = catalogs.bundled().version.split('.').map(Number);
+  const catalogVersion = offset => [year, month, day, revision + offset].join('.');
   const bodies = { flash1: 'flash one', flash2: 'flash two', flash3: 'flash tre', smart1: 'bonsai 02', smart2: 'bonsai 03' };
   const server = http.createServer((req, res) => {
     const body = bodies[req.url.slice(1)];
@@ -50,15 +52,15 @@ test('model versions stay independent across updates, cached downgrades and re-d
       sha256: createHash('sha256').update(body).digest('hex'), url: `http://127.0.0.1:${server.address().port}/${id}` } },
   }]));
   const runtime = { binary: 'test-server', name: 'Test runtime', platform: hw.platform, archives: [] };
-  const first = catalogs.validate({ schema: 1, version: '2026.11.28.1', models, runtimes: { test: runtime }, profiles: {
+  const first = catalogs.validate({ schema: 1, version: catalogVersion(1), models, runtimes: { test: runtime }, profiles: {
     flash: profile('flash', '1.0', { '1.0': 'flash1' }), smart: profile('smart', '1.0', { '1.0': 'smart1' }),
   } });
   const next = structuredClone(first);
-  next.version = '2026.11.28.2';
+  next.version = catalogVersion(2);
   next.profiles.flash = profile('flash', '1.1', { '1.0': 'flash1', '1.1': 'flash2' });
   next.profiles.smart = profile('smart', '2.0', { '1.0': 'smart1', '2.0': 'smart2' });
   const later = structuredClone(next);
-  later.version = '2026.11.28.3';
+  later.version = catalogVersion(3);
   later.profiles.flash = profile('flash', '2.0', { '1.0': 'flash1', '1.1': 'flash2', '2.0': 'flash3' });
   let latest = next;
   t.mock.method(catalogs, 'remote', async () => catalogs.validate(latest));

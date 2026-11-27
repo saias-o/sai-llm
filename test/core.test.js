@@ -68,7 +68,8 @@ test('reasoning levels are translated for each API', () => {
   assert.equal(llama.applyReasoning({ messages: [] }, pro).chat_template_kwargs, undefined);
   assert.equal('reasoning_effort' in llama.applyReasoning({ reasoning_effort: 'low' }, pro), false);
   const omni = catalog.profiles.omni.variants[0];
-  assert.deepEqual(llama.applyReasoning({}, omni, omni.reasoning.default).chat_template_kwargs, { enable_thinking: false });
+  assert.deepEqual(llama.applyReasoning({}, omni, omni.reasoning.default).chat_template_kwargs, { enable_thinking: true });
+  assert.deepEqual(llama.applyReasoning({ thinking: { type: 'disabled' } }, omni, omni.reasoning.default).chat_template_kwargs, { enable_thinking: false });
 });
 
 test('system reminders move ahead of the conversation for Qwen', () => {

@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "version": "2026.11.28.2",
+  "version": "2026.11.28.3",
   "runtimes": {
     "unsloth-b12631-vulkan-win-x64": {
       "name": "llama.cpp b12631 (Unsloth build), Vulkan",
@@ -335,10 +335,11 @@
             "repeat-penalty": 1,
             "top-p": 0.8,
             "min-p": 0,
-            "presence-penalty": 1.5
+            "presence-penalty": 1.5,
+            "reasoning-budget": 768
           },
           "reasoning": {
-            "default": "none",
+            "default": "medium",
             "levels": {
               "none": {
                 "enable_thinking": false
@@ -372,10 +373,11 @@
             "repeat-penalty": 1,
             "top-p": 0.8,
             "min-p": 0,
-            "presence-penalty": 1.5
+            "presence-penalty": 1.5,
+            "reasoning-budget": 768
           },
           "reasoning": {
-            "default": "none",
+            "default": "medium",
             "levels": {
               "none": {
                 "enable_thinking": false
@@ -409,10 +411,11 @@
             "repeat-penalty": 1,
             "top-p": 0.8,
             "min-p": 0,
-            "presence-penalty": 1.5
+            "presence-penalty": 1.5,
+            "reasoning-budget": 768
           },
           "reasoning": {
-            "default": "none",
+            "default": "medium",
             "levels": {
               "none": {
                 "enable_thinking": false
