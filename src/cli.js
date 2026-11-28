@@ -42,6 +42,7 @@ Run
 Measure
   bench              Measure load time, prompt and generation speed of each profile
                      --profile pro   one profile only     --cold   reload loaded models
+  tune [profile]     Find where each profile runs fastest on this PC's GPUs (measures each arrangement)
   eval               Agent evaluation: tool calling, coding, long context, instructions
                      --profile pro   --suite tools,code   --task needle   --repeat 3
                      --reasoning medium   --list   --out report.json
@@ -92,6 +93,7 @@ async function main() {
     case 'start': return require('./hub').start({ open: Boolean(opts.open) });
     case 'stop': return stop();
     case 'bench': return require('./bench').run(opts);
+    case 'tune': return manage.tune(opts._[0]);
     case 'eval': return require('./eval').run(opts);
     case 'update': return manage.update(opts);
     case 'rollback': return manage.rollback();

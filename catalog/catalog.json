@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "version": "2026.11.28.7",
+  "version": "2026.11.28.8",
   "runtimes": {
     "unsloth-b12631-vulkan-win-x64": {
       "name": "llama.cpp b12631 (Unsloth build), Vulkan",
@@ -323,7 +323,6 @@
           "server": {
             "ctx-size": 32768,
             "parallel": 1,
-            "n-gpu-layers": 99,
             "batch-size": 512,
             "ubatch-size": 128,
             "flash-attn": "on",
@@ -361,7 +360,6 @@
           "server": {
             "ctx-size": 32768,
             "parallel": 1,
-            "n-gpu-layers": 99,
             "batch-size": 512,
             "ubatch-size": 128,
             "flash-attn": "on",
@@ -399,7 +397,6 @@
           "server": {
             "ctx-size": 32768,
             "parallel": 1,
-            "n-gpu-layers": 99,
             "batch-size": 512,
             "ubatch-size": 128,
             "flash-attn": "on",
@@ -444,7 +441,6 @@
           "server": {
             "ctx-size": 262144,
             "parallel": 1,
-            "n-gpu-layers": 99,
             "batch-size": 512,
             "ubatch-size": 128,
             "flash-attn": "on",
@@ -481,7 +477,6 @@
           "server": {
             "ctx-size": 262144,
             "parallel": 1,
-            "n-gpu-layers": 99,
             "batch-size": 512,
             "ubatch-size": 128,
             "flash-attn": "on",
@@ -518,7 +513,6 @@
           "server": {
             "ctx-size": 262144,
             "parallel": 1,
-            "n-gpu-layers": 99,
             "batch-size": 512,
             "ubatch-size": 128,
             "flash-attn": "on",
@@ -650,7 +644,6 @@
           "server": {
             "ctx-size": 200000,
             "parallel": 1,
-            "n-gpu-layers": 99,
             "flash-attn": "on",
             "cache-type-k": "q4_0",
             "cache-type-v": "q4_0",
@@ -695,7 +688,6 @@
           "server": {
             "ctx-size": 65536,
             "parallel": 1,
-            "n-gpu-layers": 99,
             "cache-type-k": "q4_0",
             "cache-type-v": "q4_0",
             "jinja": true,
@@ -738,7 +730,6 @@
           "server": {
             "ctx-size": 65536,
             "parallel": 1,
-            "n-gpu-layers": 99,
             "cache-type-k": "q4_0",
             "cache-type-v": "q4_0",
             "jinja": true,
@@ -992,8 +983,7 @@
             "min-p": 0,
             "chat-template-kwargs": {
               "reasoning_effort": 0.99
-            },
-            "n-gpu-layers": 99
+            }
           },
           "reasoning": {
             "default": "xhigh",

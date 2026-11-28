@@ -21,9 +21,13 @@ function version(exe) {
 }
 
 // "  Vulkan0: NVIDIA GeForce RTX 4070 (12010 MiB, 11242 MiB free)"
+function parseDevices(text) {
+  return text.split(/\r?\n/).map(line => line.match(/^\s+(\w+\d+):\s*(.+?)\s*\((\d+) MiB(?:,\s*(\d+) MiB free)?/))
+    .filter(Boolean).map(([, id, name, mib, free]) => ({ id, name, mib: Number(mib), free: Number(free ?? mib) }));
+}
+
 function listDevices(exe) {
-  return runBinary(exe, ['--list-devices']).split(/\r?\n/).map(line => line.match(/^\s+(\w+\d+):\s*(.+?)\s*\((\d+) MiB/))
-    .filter(Boolean).map(([, id, name, mib]) => ({ id, name, mib: Number(mib) }));
+  return parseDevices(runBinary(exe, ['--list-devices']));
 }
 
 // The GPU backend a runtime folder was built for, from its ggml backend libraries.
@@ -34,12 +38,6 @@ function backendOf(dir) {
   if (names.some(n => n.startsWith('ggml-hip'))) return 'rocm';
   if (names.some(n => n.startsWith('ggml-metal'))) return 'metal';
   return 'cpu';
-}
-
-// Device choice for variants with "device": "auto": the GPU with the most memory, else CPU.
-function pickDevice(devices) {
-  const best = [...devices].sort((a, b) => b.mib - a.mib)[0];
-  return best ? best.id : 'none';
 }
 
 function toArgs(options) {
@@ -53,9 +51,31 @@ function toArgs(options) {
   return args;
 }
 
+// llama-server options for a placement chosen by placement.js. llama.cpp fits the layers to
+// the memory free on those devices at each start, keeping the catalog's context size.
+function placementOptions(placement, variant, files) {
+  const options = {};
+  if (!placement.devices.length) {
+    options.device = 'none';
+    options['n-gpu-layers'] = 0;
+  } else {
+    options.device = placement.devices.join(',');
+    options.fit = 'on';
+    options['fit-target'] = placement.fitTarget.join(',');
+    if (variant.server['ctx-size']) options['fit-ctx'] = variant.server['ctx-size'];
+  }
+  if (files.mmproj && placement.vision !== undefined) {
+    if (placement.vision === 'none') options['no-mmproj-offload'] = true;
+    else options['mmproj-device'] = placement.vision;
+  }
+  return options;
+}
+
 // Full llama-server command line for one profile.
 // files: { model, mmproj? } absolute paths; template: absolute path or null.
-function serverArgs({ alias, port, variant, device, files, template }) {
+// placement: from placement.js (variants with "device": "auto"); device: the older single
+// device choice ("none" = CPU). With neither, llama.cpp uses every GPU and fits on its own.
+function serverArgs({ alias, port, variant, device, placement, files, template }) {
   const options = {
     model: files.model,
     mmproj: files.mmproj,
@@ -66,8 +86,13 @@ function serverArgs({ alias, port, variant, device, files, template }) {
     ...variant.server,
   };
   if (variant.device === 'auto') {
-    options.device = device || 'none';
-    if (options.device === 'none') options['n-gpu-layers'] = 0;
+    if (placement) {
+      delete options['n-gpu-layers'];
+      Object.assign(options, placementOptions(placement, variant, files));
+    } else if (device) {
+      options.device = device;
+      if (device === 'none') options['n-gpu-layers'] = 0;
+    }
   }
   return toArgs(options);
 }
@@ -133,4 +158,4 @@ function templatePath(root, model) {
   return model.template ? path.join(root, model.template) : null;
 }
 
-module.exports = { version, listDevices, backendOf, pickDevice, serverArgs, applyReasoning, requestedLevel, limitThinkingBudget, mergeSystemMessages, templatePath, toArgs };
+module.exports = { version, listDevices, parseDevices, backendOf, placementOptions, serverArgs, applyReasoning, requestedLevel, limitThinkingBudget, mergeSystemMessages, templatePath, toArgs };

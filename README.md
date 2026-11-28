@@ -73,6 +73,7 @@ SAIAS builds on the same llama.cpp engine. Ollama, LM Studio and Jan are better 
 | `saias use <profile> <version\|latest>` | Selects one version for a profile, or resumes compatible model updates. Supports `--check` and `--yes`. |
 | `saias adopt <folder>` | Registers runtimes and model files already on disk. `--move` moves them into the SAIAS folder (same drive only), `--verify` checks their sha256. |
 | `saias install-image [folder]` | Installs the local image generator for SAIAS Chat on Windows x64. Pass a folder to store its model and runtimes on another drive. |
+| `saias tune [profile]` | Measures again where each profile runs fastest on this PC's GPUs, and saves the result. Stops the hub during the measurements. |
 | `saias status` | Shows the hardware, the installed profiles, their measured speed and the hub state. `--json` for scripts. |
 | `saias recommend` | Shows which profile suits this PC best, from the catalog and measured speeds. `--json` for scripts. |
 | `saias clean` | Deletes files no installed or previous profile uses. |
@@ -89,7 +90,9 @@ SAIAS builds on the same llama.cpp engine. Ollama, LM Studio and Jan are better 
 - `models`: model files with sizes, sha256 and licenses, plus what they need from a runtime (for example `ptq1_0` weights);
 - `profiles`: ordered variants, each with hardware requirements (`nvidiaVramGB`, `ramGB`), a model, a runtime, llama-server settings and a reasoning map.
 
-The installer picks the first variant the PC can run, and preselects every profile that has one; variants marked `slow` are labelled as such. `"device": "auto"` selects the GPU with the most memory, or the CPU when there is none.
+The installer picks the first variant the PC can run, and preselects every profile that has one; variants marked `slow` are labelled as such.
+
+**Placement.** For variants with `"device": "auto"`, the installer measures where each profile runs fastest. Reported memory does not tell which GPU is faster: an integrated GPU can report more shared memory than a dedicated GPU that runs the same model twice as fast. For each GPU alone and all GPUs together, `llama-fit-params` computes how many layers fit without loading the model. Arrangements that offload less than half as many layers as the best one are skipped. SAIAS loads each remaining arrangement, measures a prompt and an answer, and keeps the fastest. For a model with images, it then tries the vision encoder on each GPU, with memory reserved for it, and on the CPU, and adds the time to read one image. An arrangement that crashes is discarded. The result is saved per profile, and `saias status` shows it. At each start, llama.cpp fits the layers to the memory then free (`--fit`), keeps the catalog context and leaves 512 MiB free on each GPU. If the saved placement no longer starts, the hub lets llama.cpp place the model on its own. `saias tune` measures again, and `saias install` does when the GPUs change.
 
 **Hub.** `saias start` runs `src/hub.js` on port 8090. Each profile runs in its own llama-server, started when it is first requested; by default one model is kept in memory at a time (`SAIAS_HUB_EXCLUSIVE=0` keeps several). A llama-server in router mode without models serves Llama Chat and the web tools. Server logs are in `%LOCALAPPDATA%\SAIAS\logs`.
 

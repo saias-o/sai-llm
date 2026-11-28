@@ -68,7 +68,8 @@ function loadProfiles() {
     if (missing.length) { log(`saias-${id}: missing ${missing.join(', ')}; run "saias install"`); continue; }
     const name = 'saias-' + id;
     profiles.set(name, {
-      id, name, variant, model, runtime, device: entry.device, modelVersion: catalogs.modelVersion(entry), pinned: Boolean(entry.pinned),
+      id, name, variant, model, runtime, device: entry.device, placement: entry.placement || null,
+      modelVersion: catalogs.modelVersion(entry), pinned: Boolean(entry.pinned),
       exe: store.binaryPath(dir, runtime), files, template: llama.templatePath(paths.ROOT, model),
       status: 'unloaded', failed: null, port: null, proc: null, loading: null,
     });
@@ -182,11 +183,22 @@ async function load(p) {
   p.loading = (async () => {
     setStatus(p, 'loading');
     if (EXCLUSIVE) for (const other of profiles.values()) if (other !== p && other.status !== 'unloaded') await unload(other);
-    p.port = await freePort();
-    const args = llama.serverArgs({ alias: p.name, port: p.port, variant: p.variant, device: p.device, files: p.files, template: p.template });
-    p.proc = launch(p.name, p.exe, args);
-    try {
+    const start = async placement => {
+      p.port = await freePort();
+      const args = llama.serverArgs({ alias: p.name, port: p.port, variant: p.variant, device: p.device, placement, files: p.files, template: p.template });
+      p.proc = launch(p.name, p.exe, args);
       await waitReady(p.name, p.port, p.proc, STARTUP_TIMEOUT_MS);
+    };
+    try {
+      try {
+        await start(p.placement);
+      } catch (e) {
+        // A placement measured on other GPUs, or with less memory free: let llama.cpp place it.
+        if (!p.placement || p.proc.exited === null) throw e;
+        log(`${p.name}: did not start on ${p.placement.summary}; retrying with llama.cpp's own placement. Run "saias tune".`);
+        await stop(p.proc);
+        await start(null);
+      }
       setStatus(p, 'loaded');
       p.proc.once('exit', code => { if (p.status !== 'unloaded') setStatus(p, 'unloaded', { failed: true, exit_code: code ?? 1 }); });
     } catch (e) {

@@ -13,7 +13,9 @@ const ui = require('./ui');
 const { downloadFile, extractArchives, hashFile } = require('./download');
 const { resolveProfile, resolveSelection, resolveAll, recommended, filesFor } = require('./resolve');
 const { modelVersion, installedVariant, modelVersions, variantsFor } = catalogs;
-const { hubRunning } = require('./installed');
+const { hubRunning, HUB_URL } = require('./installed');
+const placement = require('./placement');
+const { setTimeout: delay } = require('node:timers/promises');
 
 // A getter: the setup can move the data folder after this module is loaded.
 const previousCatalog = () => path.join(paths.home, 'catalog.previous.json');
@@ -80,18 +82,82 @@ async function ensureFile(state, spec) {
 }
 
 // Downloads what a resolved profile needs and returns its installed state entry.
-async function installResolution(state, r, pinned = false) {
+// previous: the profile's current entry, whose placement is kept while it still applies.
+async function installResolution(state, r, previous, pinned = false) {
   const { runtime, models } = filesFor(r);
   const dir = await ensureRuntime(state, runtime.id, runtime);
   for (const f of models) await ensureFile(state, f);
   const entry = { variant: r.variant.id, modelVersion: r.modelVersion, ...(pinned ? { pinned: true } : {}) };
-  if (r.variant.device === 'auto') {
-    const devices = llama.listDevices(store.binaryPath(dir, runtime));
-    entry.device = llama.pickDevice(devices);
-    const chosen = devices.find(d => d.id === entry.device);
-    ui.ok(`${profileName(r.profile)} runs on ${chosen ? `${chosen.id}, ${chosen.name} (${chosen.mib} MiB)` : 'the CPU'}`);
+  return { ...entry, ...(await placeProfile(state, r, dir, previous)) };
+}
+
+// ---------------------------------------------------------------- placement
+
+// Measuring needs the GPUs free: the hub is stopped during placement and started again after.
+let hubPaused = false;
+
+async function pauseHub() {
+  if (hubPaused || !(await hubRunning())) return;
+  ui.info('Stopping SAIAS while the models are measured; it starts again afterwards.');
+  await fetch(`${HUB_URL}/saias/stop`, { method: 'POST', headers: { 'X-SAIAS': '1' } }).catch(() => {});
+  for (let i = 0; i < 60 && (await hubRunning()); i++) await delay(500);
+  hubPaused = true;
+}
+
+async function resumeHub() {
+  if (!hubPaused) return;
+  hubPaused = false;
+  await require('./hub-client').ensureRunning();
+}
+
+// Where a profile runs (placement.js). The measured placement is kept while the variant and the
+// GPUs are the same; force measures again. -> { placement } or {} when llama.cpp places it alone.
+async function placeProfile(state, r, dir, previous, { force = false } = {}) {
+  if (r.variant.device !== 'auto') return {};
+  const name = profileName(r.profile);
+  const exe = store.binaryPath(dir, r.runtime);
+  const kept = previous?.placement;
+  if (!force && kept && previous.variant === r.variant.id && kept.signature === placement.signature(llama.listDevices(exe))) {
+    ui.ok(`${name} runs on ${kept.summary}`);
+    return { placement: kept };
   }
-  return entry;
+  await pauseHub();
+  const files = Object.fromEntries(Object.entries(r.model.files).map(([role, f]) => [role, store.filePath(state, f)]));
+  const chosen = await placement.plan({
+    exe, alias: name, variant: r.variant, files, template: llama.templatePath(paths.ROOT, r.model),
+    mmprojBytes: r.model.files.mmproj?.size || 0, logDir: paths.logs, ui,
+  });
+  if (!chosen) { ui.ok(`${name}: llama.cpp places it on the available devices`); return {}; }
+  const m = chosen.measured;
+  ui.ok(`${name} runs on ${chosen.summary}${m ? ` (${m.genTps} tokens/s generation, ${m.promptTps} tokens/s prompt)` : ''}`);
+  return { placement: chosen };
+}
+
+// saias tune [profile]: measures again where each installed profile runs best.
+async function tune(name) {
+  const catalog = catalogs.installed();
+  const state = store.load();
+  if (!catalog || !Object.keys(state.profiles).length) throw new Error('SAIAS is not installed. Run: saias install');
+  const id = name ? String(name).toLowerCase().replace(/^saias-/, '') : null;
+  if (id && !state.profiles[id]) throw new Error(`${profileName(id)} is not installed.`);
+  ui.step('Placement');
+  try {
+    for (const [pid, entry] of Object.entries(state.profiles)) {
+      if (id && pid !== id) continue;
+      const variant = installedVariant(catalog, pid, entry);
+      if (!variant) { ui.bad(`${profileName(pid)}: variant ${entry.variant} is missing from the catalog`); continue; }
+      if (variant.device !== 'auto') { ui.info(`${profileName(pid)} uses the settings of its catalog variant`); continue; }
+      const runtime = catalog.runtimes[variant.runtime];
+      const dir = store.runtimeDir(state, variant.runtime, runtime);
+      if (!dir) { ui.bad(`${profileName(pid)}: runtime missing, run "saias install"`); continue; }
+      const r = { profile: pid, variant, model: catalog.models[variant.model], runtime };
+      const { device, placement: old, ...rest } = entry;
+      state.profiles[pid] = { ...rest, ...(await placeProfile(state, r, dir, entry, { force: true })) };
+      store.save(state);
+    }
+  } finally {
+    await resumeHub();
+  }
 }
 
 function snapshotPrevious(state) {
@@ -167,7 +233,7 @@ async function install(opts) {
 
   ui.step('Runtimes and models');
   const selection = {};
-  for (const r of plan) selection[r.profile] = await installResolution(state, r, state.profiles[r.profile]?.pinned);
+  for (const r of plan) selection[r.profile] = await installResolution(state, r, state.profiles[r.profile], state.profiles[r.profile]?.pinned);
 
   if (!sameSelection(state.profiles, selection)) snapshotPrevious(state);
   state.profiles = selection;
@@ -267,7 +333,7 @@ async function update(opts) {
 
   ui.step('Downloads');
   const selection = { ...state.profiles };
-  for (const r of plan) selection[r.profile] = await installResolution(state, r, state.profiles[r.profile]?.pinned);
+  for (const r of plan) selection[r.profile] = await installResolution(state, r, state.profiles[r.profile], state.profiles[r.profile]?.pinned);
   snapshotPrevious(state);
   state.profiles = selection;
   state.catalogVersion = latest.version;
@@ -356,7 +422,7 @@ async function use(name, value, opts) {
     ui.info(`${r.model.license.name}  ${r.model.license.url}`);
     if (r.model.license.note) ui.info(r.model.license.note);
     if (!(await ui.confirm('Accept this model license?', true, opts.yes))) return;
-    state.profiles[id] = await installResolution(state, r, pinned);
+    state.profiles[id] = await installResolution(state, r, entry, pinned);
   }
   store.save(state);
   ui.ok(`Version preference saved. Restart SAIAS to use ${profileName(id)} ${r.modelVersion}.`);
@@ -515,7 +581,7 @@ async function status(opts) {
     const runtime = catalog.runtimes[variant.runtime];
     const filesOk = Object.values(model.files).every(f => store.filePath(state, f));
     const runtimeOk = store.runtimeDir(state, variant.runtime, runtime);
-    const line = `${profileName(id).padEnd(12)} ${modelVersion(entry)}${entry.pinned ? ' (pinned)' : ''} ${model.name}, ${runtime.name}${entry.device ? `, device ${entry.device}` : ''}`;
+    const line = `${profileName(id).padEnd(12)} ${modelVersion(entry)}${entry.pinned ? ' (pinned)' : ''} ${model.name}, ${runtime.name}${entry.placement ? `, on ${entry.placement.summary}` : entry.device ? `, device ${entry.device}` : ''}`;
     if (filesOk && runtimeOk) ui.ok(line); else ui.bad(`${line}: files missing, run "saias install"`);
     const b = state.benchmarks?.[id];
     if (b && b.variant === entry.variant && modelVersion(b) === modelVersion(entry)) {
@@ -567,9 +633,10 @@ async function clean(opts) {
 
 const locked = operation => (...args) => store.withLock(() => operation(...args));
 module.exports = {
-  install: opts => opts.check ? install(opts) : store.withLock(() => install(opts)),
-  update: opts => (opts.check || opts.json) ? update(opts) : store.withLock(() => update(opts)),
-  use: (name, value, opts) => opts.check ? use(name, value, opts) : store.withLock(() => use(name, value, opts)),
+  install: opts => opts.check ? install(opts) : store.withLock(() => install(opts)).finally(resumeHub),
+  update: opts => (opts.check || opts.json) ? update(opts) : store.withLock(() => update(opts)).finally(resumeHub),
+  use: (name, value, opts) => opts.check ? use(name, value, opts) : store.withLock(() => use(name, value, opts)).finally(resumeHub),
   rollback: locked(rollback),
+  tune: name => store.withLock(() => tune(name)),
   move: locked(move), adopt: locked(adopt), clean: locked(clean), finish, status, versions, profileName, currentCatalog, missingBytes,
 };
