@@ -35,4 +35,19 @@ async function connect(ids, { yes = false } = {}) {
   }
 }
 
-module.exports = { ALL, find, connect };
+// Rewrites the SAIAS settings of the tools already connected, after the installed models
+// changed (for example a placement with a smaller context).
+async function refresh() {
+  const tools = ALL.filter(t => t.configured?.());
+  if (!tools.length) return;
+  const models = requireInstalled();
+  for (const tool of tools) {
+    try {
+      await tool.configure({ models, yes: true, refresh: true });
+    } catch (e) {
+      ui.bad(`${tool.name}: ${e.message}`);
+    }
+  }
+}
+
+module.exports = { ALL, find, connect, refresh };

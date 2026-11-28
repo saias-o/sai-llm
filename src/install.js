@@ -96,19 +96,30 @@ async function installResolution(state, r, previous, pinned = false) {
 // Measuring needs the GPUs free: the hub is stopped during placement and started again after.
 let hubPaused = false;
 
-async function pauseHub() {
+async function pauseHub(reason = 'Stopping SAIAS while the models are measured; it starts again afterwards.') {
   if (hubPaused || !(await hubRunning())) return;
-  ui.info('Stopping SAIAS while the models are measured; it starts again afterwards.');
+  ui.info(reason);
   await fetch(`${HUB_URL}/saias/stop`, { method: 'POST', headers: { 'X-SAIAS': '1' } }).catch(() => {});
   for (let i = 0; i < 60 && (await hubRunning()); i++) await delay(500);
   hubPaused = true;
 }
 
-async function resumeHub() {
+// Tools write the context of each model in their settings: they are updated after a placement
+// changed it. Runs once the new state is saved.
+let contextChanged = false;
+
+async function afterPlacement() {
+  if (contextChanged) {
+    contextChanged = false;
+    ui.info('The context of a model changed: updating the tools connected to SAIAS.');
+    await require('./integrations').refresh();
+  }
   if (!hubPaused) return;
   hubPaused = false;
   await require('./hub-client').ensureRunning();
 }
+
+const contextOf = entry => entry?.placement?.ctx ?? null;
 
 // Where a profile runs (placement.js). The measured placement is kept while the variant and the
 // GPUs are the same; force measures again. -> { placement } or {} when llama.cpp places it alone.
@@ -127,10 +138,51 @@ async function placeProfile(state, r, dir, previous, { force = false } = {}) {
     exe, alias: name, variant: r.variant, files, template: llama.templatePath(paths.ROOT, r.model),
     mmprojBytes: r.model.files.mmproj?.size || 0, logDir: paths.logs, ui,
   });
+  if (contextOf(previous) !== (chosen?.ctx ?? null)) contextChanged = true;
   if (!chosen) { ui.ok(`${name}: llama.cpp places it on the available devices`); return {}; }
   const m = chosen.measured;
-  ui.ok(`${name} runs on ${chosen.summary}${m ? ` (${m.genTps} tokens/s generation, ${m.promptTps} tokens/s prompt)` : ''}`);
+  ui.ok(`${name} runs on ${chosen.summary} (${m.genTps} tokens/s generation, ${m.promptTps} tokens/s prompt)`);
+  if (chosen.options.length > 1) ui.info(`  ${chosen.options.length} options were measured; "saias placement ${r.profile}" lists them.`);
   return { placement: chosen };
+}
+
+function printPlacement(id, entry) {
+  const p = entry.placement;
+  if (!p) { ui.info(`${profileName(id).padEnd(12)} placed by llama.cpp on the available devices`); return; }
+  ui.info(`${profileName(id)}: ${p.choice === 'auto' ? 'automatic choice' : 'your choice'} (measured ${p.date || 'earlier'})`);
+  const current = p.choice === undefined || p.choice === 'auto' ? p.auto ?? 0 : p.choice;
+  (p.options || [p]).forEach((o, i) => {
+    const active = i === current;
+    const m = o.measured;
+    const image = m.imageSeconds !== undefined ? `, image ${m.imageSeconds} s` : '';
+    ui.info(`  ${active ? '>' : ' '} ${i}  ${o.summary}: ${m.genTps} tokens/s generation, ${m.promptTps} tokens/s prompt${image}${i === p.auto ? '  (automatic)' : ''}`);
+  });
+}
+
+// saias placement [profile] [option|auto]: lists the measured options of each profile, or
+// switches one profile to another option (or back to SAIAS's automatic choice).
+async function choosePlacement(name, choice) {
+  const state = store.load();
+  const id = name ? String(name).toLowerCase().replace(/^saias-/, '') : null;
+  if (id && !state.profiles[id]) throw new Error(`${profileName(id)} is not installed.`);
+  ui.step('Placement');
+  if (choice === undefined) {
+    for (const [pid, entry] of Object.entries(state.profiles)) if (!id || pid === id) printPlacement(pid, entry);
+    if (!id || state.profiles[id]?.placement?.options?.length > 1) {
+      ui.info('Switch with "saias placement <profile> <number>", or "saias placement <profile> auto".');
+    }
+    return;
+  }
+  if (!id) throw new Error('Name the profile: saias placement <profile> <number|auto>');
+  const entry = state.profiles[id];
+  if (!entry.placement?.options) throw new Error(`${profileName(id)} has no measured options. Run "saias tune ${id}".`);
+  const before = contextOf(entry);
+  entry.placement = placement.select(entry.placement, choice === 'auto' ? 'auto' : Number(choice));
+  if (before !== contextOf(entry)) contextChanged = true;
+  store.save(state);
+  ui.ok(`${profileName(id)} runs on ${entry.placement.summary}${entry.placement.choice === 'auto' ? ' (automatic choice)' : ''}`);
+  await pauseHub('Restarting SAIAS with the new placement.');
+  await afterPlacement();
 }
 
 // saias tune [profile]: measures again where each installed profile runs best.
@@ -156,7 +208,7 @@ async function tune(name) {
       store.save(state);
     }
   } finally {
-    await resumeHub();
+    await afterPlacement();
   }
 }
 
@@ -633,10 +685,11 @@ async function clean(opts) {
 
 const locked = operation => (...args) => store.withLock(() => operation(...args));
 module.exports = {
-  install: opts => opts.check ? install(opts) : store.withLock(() => install(opts)).finally(resumeHub),
-  update: opts => (opts.check || opts.json) ? update(opts) : store.withLock(() => update(opts)).finally(resumeHub),
-  use: (name, value, opts) => opts.check ? use(name, value, opts) : store.withLock(() => use(name, value, opts)).finally(resumeHub),
+  install: opts => opts.check ? install(opts) : store.withLock(() => install(opts)).finally(afterPlacement),
+  update: opts => (opts.check || opts.json) ? update(opts) : store.withLock(() => update(opts)).finally(afterPlacement),
+  use: (name, value, opts) => opts.check ? use(name, value, opts) : store.withLock(() => use(name, value, opts)).finally(afterPlacement),
   rollback: locked(rollback),
   tune: name => store.withLock(() => tune(name)),
+  placement: (name, choice) => store.withLock(() => choosePlacement(name, choice)),
   move: locked(move), adopt: locked(adopt), clean: locked(clean), finish, status, versions, profileName, currentCatalog, missingBytes,
 };

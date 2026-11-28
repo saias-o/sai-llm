@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "version": "2026.11.28.8",
+  "version": "2026.11.28.9",
   "runtimes": {
     "unsloth-b12631-vulkan-win-x64": {
       "name": "llama.cpp b12631 (Unsloth build), Vulkan",
@@ -438,6 +438,7 @@
           "runtime": "unsloth-b12631-vulkan-win-x64",
           "requires": {},
           "device": "auto",
+          "contextFloor": 32768,
           "server": {
             "ctx-size": 262144,
             "parallel": 1,
@@ -474,6 +475,7 @@
           "runtime": "unsloth-b12631-vulkan-linux-x64",
           "requires": {},
           "device": "auto",
+          "contextFloor": 32768,
           "server": {
             "ctx-size": 262144,
             "parallel": 1,
@@ -510,6 +512,7 @@
           "runtime": "unsloth-b12631-metal-macos-arm64",
           "requires": {},
           "device": "auto",
+          "contextFloor": 32768,
           "server": {
             "ctx-size": 262144,
             "parallel": 1,

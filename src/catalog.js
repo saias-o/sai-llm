@@ -79,6 +79,10 @@ function validateVariants(variants, catalog, problems) {
         if (!runtime.supports?.includes(need)) problems.push(`${v.id}: runtime ${v.runtime} lacks "${need}" needed by ${v.model}`);
       }
     }
+    const floor = v.contextFloor;
+    if (floor !== undefined && (!Number.isSafeInteger(floor) || floor < 1 || floor > (v.server?.['ctx-size'] ?? floor))) {
+      problems.push(`${v.id}: contextFloor must be a positive integer no larger than ctx-size`);
+    }
     const budget = v.server?.['reasoning-budget'];
     if (v.reasoning?.enforceBudget && (!Number.isSafeInteger(budget) || budget < 1)) {
       problems.push(`${v.id}: an enforced reasoning budget must be a positive integer`);

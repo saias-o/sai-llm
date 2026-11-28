@@ -106,7 +106,7 @@ function detect() {
 }
 
 // models: installed models, most capable first (see installed.js).
-async function configure({ models, yes }) {
+async function configure({ models, yes, refresh = false }) {
   ui.step('Hermes');
   // saias-smart answers fastest among the capable profiles: the everyday default for an agent.
   const defaultModel = (models.find(m => m.profile === 'smart') || models[0]).id;
@@ -120,7 +120,8 @@ async function configure({ models, yes }) {
   const python = hermesPython(hermes);
   if (!configPath || !python) { ui.bad('Hermes configuration not found; add the provider by hand (see README).'); return; }
 
-  const setDefault = defaultModel && (await ui.confirm(`Make ${defaultModel} the default Hermes model?`, true, yes));
+  // A refresh only updates the model limits: the default model stays the user's choice.
+  const setDefault = !refresh && defaultModel && (await ui.confirm(`Make ${defaultModel} the default Hermes model?`, true, yes));
   const spec = {
     provider: {
       name: 'SAIAS (local)', api: HUB, transport: 'chat_completions', discover_models: false,

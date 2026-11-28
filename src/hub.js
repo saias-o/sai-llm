@@ -229,7 +229,7 @@ function modelEntry(p) {
   const status = { value: p.status, ...(p.failed || {}) };
   return {
     id: p.name, aliases: [], tags: [], object: 'model', owned_by: 'saias', created: CREATED,
-    status, source: 'preset', can_remove: false, context_length: p.variant.server['ctx-size'] || p.model.context,
+    status, source: 'preset', can_remove: false, context_length: p.placement?.ctx || p.variant.server['ctx-size'] || p.model.context,
     architecture: { input_modalities: p.model.vision ? ['text', 'image'] : ['text'], output_modalities: ['text'] },
     saias: {
       profile: p.id, model: p.model.name, variant: p.variant.id, modelVersion: p.modelVersion, pinned: p.pinned, vision: Boolean(p.model.vision),

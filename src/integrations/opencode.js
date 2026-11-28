@@ -15,7 +15,7 @@ function detect() {
   return Boolean(which('opencode')) || fs.existsSync(CONFIG);
 }
 
-async function configure({ models, yes }) {
+async function configure({ models, yes, refresh = false }) {
   ui.step('OpenCode');
   let config = {};
   if (fs.existsSync(CONFIG)) {
@@ -43,7 +43,7 @@ async function configure({ models, yes }) {
   };
   const best = models[0];
   const askDefault = `Make ${best.id} the default OpenCode model${config.model ? ` (instead of ${config.model})` : ''}?`;
-  if (await ui.confirm(askDefault, !config.model, yes)) config.model = `saias/${best.id}`;
+  if (!refresh && (await ui.confirm(askDefault, !config.model, yes))) config.model = `saias/${best.id}`;
   fs.mkdirSync(path.dirname(CONFIG), { recursive: true });
   const saved = backup(CONFIG);
   fs.writeFileSync(CONFIG, JSON.stringify(config, null, 2) + '\n');

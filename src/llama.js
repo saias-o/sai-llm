@@ -62,8 +62,11 @@ function placementOptions(placement, variant, files) {
     options.device = placement.devices.join(',');
     options.fit = 'on';
     options['fit-target'] = placement.fitTarget.join(',');
-    if (variant.server['ctx-size']) options['fit-ctx'] = variant.server['ctx-size'];
   }
+  // A placement can use a smaller context than the catalog's, down to the variant's floor.
+  const ctx = placement.ctx || variant.server['ctx-size'];
+  if (placement.ctx) options['ctx-size'] = placement.ctx;
+  if (ctx && placement.devices.length) options['fit-ctx'] = ctx;
   if (files.mmproj && placement.vision !== undefined) {
     if (placement.vision === 'none') options['no-mmproj-offload'] = true;
     else options['mmproj-device'] = placement.vision;

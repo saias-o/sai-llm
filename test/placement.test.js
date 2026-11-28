@@ -101,6 +101,55 @@ test('without a placement, llama.cpp uses every GPU and fits on its own', () => 
   assert.ok(!args.includes('--device') && !args.includes('--n-gpu-layers'));
 });
 
+test('a smaller context is chosen only when it is clearly faster', () => {
+  assert.deepEqual(placement.smallerContexts(262144, 32768), [131072, 65536, 32768]);
+  assert.deepEqual(placement.smallerContexts(32768, 32768), []);
+  assert.deepEqual(placement.smallerContexts(32768, undefined), []);
+  // Measured on a laptop: Radeon iGPU at 262k against a GeForce MX450 at 32k.
+  const radeon = { m: { promptTps: 196, genTps: 26.7 } };
+  const mx450 = { ctx: 32768, m: { promptTps: 445, genTps: 50.6 } };
+  assert.equal(placement.pick([radeon, mx450], false), 1);
+  const slightlyFaster = { ctx: 32768, m: { promptTps: 210, genTps: 28 } };
+  assert.equal(placement.pick([radeon, slightlyFaster], false), 0);
+  assert.equal(placement.pick([{ ctx: 32768, m: radeon.m }], false), 0);
+  assert.equal(placement.pick([], false), -1);
+});
+
+test('the measured options can be switched, and back to the automatic choice', () => {
+  const stored = {
+    signature: 's', date: '2026-11-28', auto: 1,
+    options: [
+      { devices: ['Vulkan0'], fitTarget: [512], summary: 'Radeon', layers: 'all', measured: { promptTps: 196, genTps: 26.7 } },
+      { devices: ['Vulkan1'], fitTarget: [512], ctx: 32768, summary: 'MX450, 32,768-token context', layers: 'all', measured: { promptTps: 445, genTps: 50.6 } },
+    ],
+  };
+  const auto = placement.select(stored, 'auto');
+  assert.equal(auto.ctx, 32768);
+  assert.equal(auto.choice, 'auto');
+  const manual = placement.select(auto, 0);
+  assert.equal(manual.ctx, undefined);
+  assert.deepEqual(manual.devices, ['Vulkan0']);
+  assert.equal(manual.choice, 0);
+  assert.equal(manual.options.length, 2);
+  assert.equal(placement.select(manual, 'auto').summary, 'MX450, 32,768-token context');
+  assert.throws(() => placement.select(manual, 5), /No option 5/);
+});
+
+test('a placement with a smaller context passes it to llama-server', () => {
+  const args = llama.serverArgs({ alias: 'saias-flash', port: 1, variant: flash, files: { model: 'm.gguf' },
+    placement: { devices: ['Vulkan1'], fitTarget: [512], ctx: 32768 } });
+  assert.equal(value(args, '--ctx-size'), '32768');
+  assert.equal(value(args, '--fit-ctx'), '32768');
+  assert.equal(args.filter(a => a === '--ctx-size').length, 1);
+});
+
+test('the catalog context floors are valid', () => {
+  for (const variant of catalog.profiles.flash.variants) assert.equal(variant.contextFloor, 32768);
+  const broken = structuredClone(catalog);
+  broken.profiles.flash.variants[0].contextFloor = 10 ** 9;
+  assert.throws(() => catalogs.validate(broken), /contextFloor/);
+});
+
 test('the test image is a valid PNG', () => {
   const png = placement.testImage(16);
   assert.deepEqual([...png.subarray(0, 8)], [137, 80, 78, 71, 13, 10, 26, 10]);

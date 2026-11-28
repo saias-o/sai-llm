@@ -26,7 +26,7 @@ function installedModels() {
       modelVersion: catalogs.modelVersion(entry),
       pinned: Boolean(entry.pinned),
       name: model.name,
-      context: variant.server['ctx-size'] || model.context,
+      context: entry.placement?.ctx || variant.server['ctx-size'] || model.context,
       vision: Boolean(model.vision),
       reasoning: levels.some(l => l !== 'none'),
       rank: catalog.profiles[id].rank,
